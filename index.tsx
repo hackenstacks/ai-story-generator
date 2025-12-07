@@ -17,6 +17,34 @@ const exportButton = document.getElementById('export-button') as HTMLButtonEleme
 const importButton = document.getElementById('import-button') as HTMLButtonElement;
 const importFileInput = document.getElementById('import-file') as HTMLInputElement;
 
+// Settings Elements
+const settingsButton = document.getElementById('settings-button') as HTMLButtonElement;
+const settingsDialog = document.getElementById('settings-dialog') as HTMLDialogElement;
+const settingsForm = document.getElementById('settings-form') as HTMLFormElement;
+const closeSettingsBtn = document.getElementById('close-settings-btn') as HTMLButtonElement;
+const cancelSettingsBtn = document.getElementById('cancel-settings') as HTMLButtonElement;
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+// Settings Form Inputs
+const chatProviderSelect = document.getElementById('chat-provider') as HTMLSelectElement;
+const chatModelSelect = document.getElementById('chat-model-select') as HTMLSelectElement;
+const chatCustomModelInput = document.getElementById('chat-custom-model') as HTMLInputElement;
+const chatApiKeyInput = document.getElementById('chat-api-key') as HTMLInputElement;
+const chatModelGroup = document.getElementById('chat-model-group') as HTMLElement;
+const chatCustomModelGroup = document.getElementById('chat-custom-model-group') as HTMLElement;
+const chatWritingStyleSelect = document.getElementById('chat-writing-style') as HTMLSelectElement;
+const chatOutputLengthSelect = document.getElementById('chat-output-length') as HTMLSelectElement;
+
+
+const imageProviderSelect = document.getElementById('image-provider') as HTMLSelectElement;
+const imageModelSelect = document.getElementById('image-model-select') as HTMLSelectElement;
+const imageAspectRatioSelect = document.getElementById('image-aspect-ratio') as HTMLSelectElement;
+const imageStyleSelect = document.getElementById('image-style') as HTMLSelectElement;
+const imageNegativePromptInput = document.getElementById('image-negative-prompt') as HTMLTextAreaElement;
+const imageApiKeyInput = document.getElementById('image-api-key') as HTMLInputElement;
+
+
 // --- TYPE DEFINITIONS ---
 type Turn = {
   id: string;
@@ -24,7 +52,147 @@ type Turn = {
   content: string; // For text, it's markdown. For image, it's base64 data URI.
 };
 
+interface AppSettings {
+  chatProvider: 'google' | 'custom';
+  chatModel: string;
+  chatApiKey: string;
+  chatWritingStyle: string;
+  chatOutputLength: string;
+  imageProvider: 'google';
+  imageModel: string;
+  imageApiKey: string;
+  imageAspectRatio: string;
+  imageStyle: string;
+  imageNegativePrompt: string;
+}
+
+// --- STATE ---
 let conversation: Turn[] = [];
+
+const DEFAULT_SETTINGS: AppSettings = {
+  chatProvider: 'google',
+  chatModel: 'gemini-2.5-flash-image',
+  chatApiKey: '',
+  chatWritingStyle: 'standard',
+  chatOutputLength: 'medium',
+  imageProvider: 'google',
+  imageModel: 'gemini-2.5-flash-image',
+  imageApiKey: '',
+  imageAspectRatio: '1:1',
+  imageStyle: 'none',
+  imageNegativePrompt: '',
+};
+
+let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
+
+
+// --- SETTINGS LOGIC ---
+
+function loadSettings() {
+  const stored = localStorage.getItem('storyWeaverSettings');
+  if (stored) {
+    currentSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+  }
+}
+
+function saveSettingsToStorage() {
+  localStorage.setItem('storyWeaverSettings', JSON.stringify(currentSettings));
+}
+
+function updateSettingsUI() {
+  // Chat Tab
+  chatProviderSelect.value = currentSettings.chatProvider;
+  
+  if (currentSettings.chatProvider === 'google') {
+    // If the saved model isn't in the preset dropdown, switch to custom or default to flash-image
+    if ([...chatModelSelect.options].some(o => o.value === currentSettings.chatModel)) {
+      chatModelSelect.value = currentSettings.chatModel;
+    } else {
+      chatModelSelect.value = 'gemini-2.5-flash-image'; 
+    }
+    chatModelGroup.classList.remove('hidden');
+    chatCustomModelGroup.classList.add('hidden');
+  } else {
+    chatCustomModelInput.value = currentSettings.chatModel;
+    chatModelGroup.classList.add('hidden');
+    chatCustomModelGroup.classList.remove('hidden');
+  }
+
+  chatApiKeyInput.value = currentSettings.chatApiKey;
+  chatWritingStyleSelect.value = currentSettings.chatWritingStyle;
+  chatOutputLengthSelect.value = currentSettings.chatOutputLength;
+
+  // Image Tab
+  imageProviderSelect.value = currentSettings.imageProvider;
+  imageModelSelect.value = currentSettings.imageModel;
+  imageApiKeyInput.value = currentSettings.imageApiKey;
+  imageAspectRatioSelect.value = currentSettings.imageAspectRatio;
+  imageStyleSelect.value = currentSettings.imageStyle;
+  imageNegativePromptInput.value = currentSettings.imageNegativePrompt;
+}
+
+function saveSettingsFromUI() {
+  const provider = chatProviderSelect.value as 'google' | 'custom';
+  currentSettings.chatProvider = provider;
+  
+  if (provider === 'google') {
+    currentSettings.chatModel = chatModelSelect.value;
+  } else {
+    currentSettings.chatModel = chatCustomModelInput.value.trim() || 'gemini-2.5-flash-image';
+  }
+  
+  currentSettings.chatApiKey = chatApiKeyInput.value.trim();
+  currentSettings.chatWritingStyle = chatWritingStyleSelect.value;
+  currentSettings.chatOutputLength = chatOutputLengthSelect.value;
+
+  currentSettings.imageProvider = imageProviderSelect.value as 'google';
+  currentSettings.imageModel = imageModelSelect.value;
+  currentSettings.imageApiKey = imageApiKeyInput.value.trim();
+  currentSettings.imageAspectRatio = imageAspectRatioSelect.value;
+  currentSettings.imageStyle = imageStyleSelect.value;
+  currentSettings.imageNegativePrompt = imageNegativePromptInput.value.trim();
+
+  saveSettingsToStorage();
+  settingsDialog.close();
+}
+
+// Settings Event Listeners
+settingsButton.addEventListener('click', () => {
+  updateSettingsUI();
+  settingsDialog.showModal();
+});
+
+closeSettingsBtn.addEventListener('click', () => settingsDialog.close());
+cancelSettingsBtn.addEventListener('click', () => settingsDialog.close());
+
+settingsForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveSettingsFromUI();
+});
+
+// Dynamic Settings Logic
+chatProviderSelect.addEventListener('change', () => {
+    if (chatProviderSelect.value === 'google') {
+        chatModelGroup.classList.remove('hidden');
+        chatCustomModelGroup.classList.add('hidden');
+    } else {
+        chatModelGroup.classList.add('hidden');
+        chatCustomModelGroup.classList.remove('hidden');
+    }
+});
+
+// Tabs
+tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        tabButtons.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        
+        btn.classList.add('active');
+        const tabId = (btn as HTMLElement).dataset.tab;
+        if(tabId) document.getElementById(tabId)?.classList.add('active');
+    });
+});
+
 
 // --- RENDERING LOGIC ---
 
@@ -47,7 +215,6 @@ function renderTurn(turn: Turn) {
     contentElement.appendChild(img);
   }
 
-  turnElement.appendChild(contentElement);
   turnElement.appendChild(createTurnControls(turn, turnElement));
   conversationContainer.appendChild(turnElement);
   conversationContainer.scrollTop = conversationContainer.scrollHeight;
@@ -131,13 +298,73 @@ function renderConversation() {
 async function generateContent(prompt: string) {
   setLoading(true);
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // 1. Determine Chat Configuration
+    const chatKey = currentSettings.chatApiKey || process.env.API_KEY;
+    const chatModel = currentSettings.chatModel;
+    
+    // 2. Determine Modalities based on model name heuristic
+    const supportsImages = chatModel.toLowerCase().includes('image');
+    const modalities = [Modality.TEXT];
+    if (supportsImages) {
+        modalities.push(Modality.IMAGE);
+    }
+
+    const ai = new GoogleGenAI({ apiKey: chatKey });
+    
+    // 3. Prepare config and modified prompt based on image settings
+    const config: any = {
+      responseModalities: modalities,
+    };
+
+    // Build system/context instructions
+    const systemInstructions: string[] = [];
+
+    // Writing Style
+    if (currentSettings.chatWritingStyle && currentSettings.chatWritingStyle !== 'standard') {
+        let styleDesc = currentSettings.chatWritingStyle;
+        if(styleDesc === 'simple') styleDesc = 'simple and easy to understand (for kids)';
+        systemInstructions.push(`Writing Style: ${styleDesc}.`);
+    }
+
+    // Output Length
+    if (currentSettings.chatOutputLength) {
+        let lengthInstruction = "";
+        switch(currentSettings.chatOutputLength) {
+            case 'short': lengthInstruction = "Keep the response short, around 100 words."; break;
+            case 'medium': lengthInstruction = "Write a medium length response, around 300 words."; break;
+            case 'long': lengthInstruction = "Write a long, detailed response, around 600 words."; break;
+        }
+        if (lengthInstruction) systemInstructions.push(lengthInstruction);
+    }
+
+    // Only apply image configuration if the model supports images
+    if (supportsImages) {
+      if (currentSettings.imageAspectRatio) {
+         config.imageConfig = {
+             aspectRatio: currentSettings.imageAspectRatio
+         };
+      }
+
+      // Inject style and negative prompt into the request via prompt engineering
+      
+      if (currentSettings.imageStyle && currentSettings.imageStyle !== 'none') {
+        systemInstructions.push(`Visual Style for Images: ${currentSettings.imageStyle.replace(/-/g, ' ')}.`);
+      }
+      
+      if (currentSettings.imageNegativePrompt) {
+        systemInstructions.push(`Negative Prompt (avoid in images): ${currentSettings.imageNegativePrompt}.`);
+      }
+    }
+
+    let finalPrompt = prompt;
+    if (systemInstructions.length > 0) {
+      finalPrompt = `${prompt}\n\n[System & Generation Configuration]\n${systemInstructions.join('\n')}`;
+    }
+
     const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-2.5-flash-image',
-      contents: prompt,
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      },
+      model: chatModel,
+      contents: finalPrompt,
+      config: config,
     });
 
     let partialText = '';
@@ -160,9 +387,12 @@ async function generateContent(prompt: string) {
         }
 
       } else if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-        // Text block is finished, create image turn
-        partialText = '';
-        currentTextTurn = null;
+        // Text block is finished (or interleaved), create image turn
+        // If we were building a text turn, we leave it as is and start a new image turn
+        if (currentTextTurn) {
+            currentTextTurn = null; 
+            partialText = '';
+        }
 
         const base64Data = chunk.candidates[0].content.parts[0].inlineData.data;
         const imageTurn: Turn = {
@@ -278,5 +508,6 @@ exportButton.addEventListener('click', exportConversation);
 importButton.addEventListener('click', () => importFileInput.click());
 importFileInput.addEventListener('change', importConversation);
 
-// Load conversation on startup
+// Load conversation and settings on startup
+loadSettings();
 loadConversation();

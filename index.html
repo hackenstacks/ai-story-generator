@@ -16,6 +16,7 @@
     <header>
       <h1>Story Weaver</h1>
       <div class="controls">
+        <button id="settings-button" title="Configure Providers">Settings</button>
         <button id="save-button">Save</button>
         <button id="export-button">Export</button>
         <button id="import-button">Import</button>
@@ -39,6 +40,132 @@
         </button>
       </form>
     </footer>
+
+    <!-- Settings Modal -->
+    <dialog id="settings-dialog">
+      <form method="dialog" id="settings-form">
+        <div class="settings-header">
+          <h2>Settings</h2>
+          <button type="button" id="close-settings-btn" class="icon-btn">&times;</button>
+        </div>
+        
+        <div class="tabs">
+          <button type="button" class="tab-btn active" data-tab="chat-settings">Chat / Story</button>
+          <button type="button" class="tab-btn" data-tab="image-settings">Images</button>
+        </div>
+
+        <div class="tab-content active" id="chat-settings">
+          <div class="form-group">
+            <label for="chat-provider">Provider</label>
+            <select id="chat-provider">
+              <option value="google">Google GenAI (Default)</option>
+              <option value="custom">Custom Endpoint</option>
+            </select>
+          </div>
+          
+          <div class="form-group" id="chat-model-group">
+            <label for="chat-model-select">Model Preset</label>
+            <select id="chat-model-select">
+              <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Free • Text & Image)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Free • Text Only)</option>
+              <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash Lite (Fast • Text Only)</option>
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro (Paid • High Quality Text)</option>
+            </select>
+          </div>
+
+          <div class="form-group hidden" id="chat-custom-model-group">
+            <label for="chat-custom-model">Model Name</label>
+            <input type="text" id="chat-custom-model" placeholder="e.g. gemini-1.5-flash" />
+          </div>
+          
+          <div class="form-group">
+            <label for="chat-writing-style">Writing Style</label>
+            <select id="chat-writing-style">
+              <option value="standard">Standard (Default)</option>
+              <option value="descriptive">Descriptive & Detailed</option>
+              <option value="concise">Concise & Direct</option>
+              <option value="humorous">Humorous & Witty</option>
+              <option value="dark">Dark & Gritty</option>
+              <option value="poetic">Poetic & Lyrical</option>
+              <option value="simple">Simple (for kids)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="chat-output-length">Response Length (Per Turn)</label>
+            <select id="chat-output-length">
+              <option value="short">Short (~100 words)</option>
+              <option value="medium">Medium (~300 words)</option>
+              <option value="long">Long (~600 words)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="chat-api-key">API Key <small>(Leave empty to use env default)</small></label>
+            <input type="password" id="chat-api-key" placeholder="sk-..." />
+          </div>
+        </div>
+
+        <div class="tab-content" id="image-settings">
+          <p class="info-text">Configure image generation behavior.</p>
+           <div class="form-group">
+            <label for="image-provider">Provider</label>
+            <select id="image-provider">
+              <option value="google">Google GenAI</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="image-model-select">Model Preset</label>
+            <select id="image-model-select">
+              <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Standard)</option>
+              <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="image-aspect-ratio">Aspect Ratio</label>
+            <select id="image-aspect-ratio">
+              <option value="1:1">1:1 (Square)</option>
+              <option value="16:9">16:9 (Landscape)</option>
+              <option value="9:16">9:16 (Portrait)</option>
+              <option value="4:3">4:3 (Standard)</option>
+              <option value="3:4">3:4 (Portrait Standard)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="image-style">Style Preset</label>
+            <select id="image-style">
+              <option value="none">None (Default)</option>
+              <option value="photorealistic">Photorealistic</option>
+              <option value="anime">Anime / Manga</option>
+              <option value="digital-art">Digital Art</option>
+              <option value="painterly">Painterly / Oil Painting</option>
+              <option value="watercolor">Watercolor</option>
+              <option value="cyberpunk">Cyberpunk / Neon</option>
+              <option value="sketch">Pencil Sketch</option>
+              <option value="3d-render">3D Render</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="image-negative-prompt">Negative Prompt <small>(What to avoid)</small></label>
+            <textarea id="image-negative-prompt" rows="2" placeholder="e.g. text, watermark, blurry, distorted hands"></textarea>
+          </div>
+
+           <div class="form-group">
+            <label for="image-api-key">API Key <small>(Leave empty to use Chat key)</small></label>
+            <input type="password" id="image-api-key" placeholder="sk-..." />
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" id="cancel-settings">Cancel</button>
+          <button type="submit" id="save-settings">Save Changes</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="index.tsx"></script>
   </body>
 </html>
