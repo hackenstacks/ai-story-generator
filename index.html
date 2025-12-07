@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Story Weaver</title>
+    <link rel="stylesheet" href="index.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.sh/@google/genai@^0.8.0",
+          "marked": "https://esm.sh/marked@^15.0.8"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header>
+      <h1>Story Weaver</h1>
+      <div class="controls">
+        <button id="save-button">Save</button>
+        <button id="export-button">Export</button>
+        <button id="import-button">Import</button>
+        <input type="file" id="import-file" accept=".json" style="display: none;" />
+      </div>
+    </header>
+    <main id="conversation-container"></main>
+    <footer>
+      <form id="prompt-form">
+        <input
+          type="text"
+          id="prompt-input"
+          placeholder="Weave a new story..."
+          autocomplete="off"
+        />
+        <button type="submit" id="submit-button">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+          </svg>
+          <span>Generate</span>
+        </button>
+      </form>
+    </footer>
+    <script type="module" src="index.tsx"></script>
+  </body>
+</html>

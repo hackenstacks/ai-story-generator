@@ -1,0 +1,5 @@
+{
+  "name": "Streaming",
+  "description": "Stream responses containing both images and text",
+  "requestFramePermissions": []
+}
