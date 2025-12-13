@@ -105,7 +105,6 @@ interface AppSettings {
 let library: Story[] = [];
 let currentStoryId: string | null = null;
 
-
 const DEFAULT_SETTINGS: AppSettings = {
   chatProvider: 'google',
   chatModel: 'gemini-2.5-flash-image',
@@ -123,6 +122,72 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
 
+// --- INDEXED DB HELPER ---
+const DB_NAME = 'StoryWeaverDB';
+const DB_VERSION = 1;
+const STORE_STORIES = 'stories';
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_STORIES)) {
+        db.createObjectStore(STORE_STORIES, { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+async function getAllStoriesFromDB(): Promise<Story[]> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_STORIES, 'readonly');
+            const store = tx.objectStore(STORE_STORIES);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error getting stories:", e);
+        return [];
+    }
+}
+
+async function saveStoryToDB(story: Story): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_STORIES, 'readwrite');
+            const store = tx.objectStore(STORE_STORIES);
+            const request = store.put(story);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error saving story:", e);
+        alert("Failed to save story. Storage might be full.");
+    }
+}
+
+async function deleteStoryFromDB(id: string): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_STORIES, 'readwrite');
+            const store = tx.objectStore(STORE_STORIES);
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error deleting story:", e);
+    }
+}
+
 // --- HELPERS ---
 function generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -134,35 +199,52 @@ function formatDate(timestamp: number): string {
 
 // --- LIBRARY LOGIC ---
 
-function loadLibrary() {
+async function initLibrary() {
+    // 1. Load from DB
+    library = await getAllStoriesFromDB();
+
+    // 2. Migration: Check for legacy LocalStorage data
     const stored = localStorage.getItem('storyWeaverLibrary');
+    const oldConv = localStorage.getItem('storyWeaverConversation');
+    let migrated = false;
+
     if (stored) {
         try {
-            library = JSON.parse(stored);
-        } catch (e) {
-            console.error('Failed to parse library', e);
-            library = [];
-        }
+            const legacyLib = JSON.parse(stored);
+            if (Array.isArray(legacyLib)) {
+                for (const story of legacyLib) {
+                    if (!library.find(s => s.id === story.id)) {
+                         await saveStoryToDB(story);
+                         library.push(story);
+                    }
+                }
+            }
+            localStorage.removeItem('storyWeaverLibrary'); // Clear after migration
+            migrated = true;
+        } catch (e) { console.error('Migration error (lib)', e); }
     }
-    
-    // Legacy migration: check for old single conversation
-    const oldConv = localStorage.getItem('storyWeaverConversation');
-    if (oldConv && library.length === 0) {
+
+    if (oldConv) {
         try {
             const conversation = JSON.parse(oldConv);
             if (conversation.length > 0) {
-                const newStory: Story = {
+                 const newStory: Story = {
                     id: generateId(),
                     title: 'Restored Story',
                     conversation: conversation,
                     createdAt: Date.now(),
                     updatedAt: Date.now()
                 };
+                await saveStoryToDB(newStory);
                 library.push(newStory);
-                saveLibrary();
-                localStorage.removeItem('storyWeaverConversation'); // Cleanup
             }
-        } catch(e) {}
+            localStorage.removeItem('storyWeaverConversation');
+            migrated = true;
+        } catch (e) { console.error('Migration error (conv)', e); }
+    }
+
+    if (migrated) {
+        console.log("Migration from LocalStorage to IndexedDB complete.");
     }
 
     renderLibraryList();
@@ -174,11 +256,8 @@ function loadLibrary() {
     }
 }
 
-function saveLibrary() {
-    localStorage.setItem('storyWeaverLibrary', JSON.stringify(library));
-}
 
-function createNewStory() {
+async function createNewStory() {
     const newStory: Story = {
         id: generateId(),
         title: 'New Story',
@@ -186,8 +265,11 @@ function createNewStory() {
         createdAt: Date.now(),
         updatedAt: Date.now()
     };
+    
+    // Save to DB first
+    await saveStoryToDB(newStory);
+    
     library.unshift(newStory);
-    saveLibrary();
     loadStory(newStory.id);
     renderLibraryList();
     
@@ -200,48 +282,49 @@ function loadStory(id: string) {
     if (!story) return;
 
     currentStoryId = id;
-    renderConversation(story); // Pass full story to access theme
-    renderLibraryList(); // To update active state
+    renderConversation(story); 
+    renderLibraryList(); 
 }
 
-function deleteStory(id: string, event: Event) {
-    event.stopPropagation(); // Prevent loading the story
+async function deleteStory(id: string, event: Event) {
+    event.stopPropagation(); 
     if(!confirm('Are you sure you want to delete this story?')) return;
 
+    await deleteStoryFromDB(id);
     library = library.filter(s => s.id !== id);
-    saveLibrary();
     
     if (currentStoryId === id) {
         currentStoryId = null;
         conversationContainer.innerHTML = '';
-        conversationContainer.appendChild(welcomeMessage); // Show welcome
+        conversationContainer.appendChild(welcomeMessage); 
         welcomeMessage.style.display = 'block';
     }
     
     renderLibraryList();
 }
 
-function updateCurrentStory(conversation: Turn[], themeImage?: string) {
+async function updateCurrentStory(conversation: Turn[], themeImage?: string) {
     if (!currentStoryId) {
-        createNewStory();
+        await createNewStory();
     }
     
     const storyIndex = library.findIndex(s => s.id === currentStoryId);
     if (storyIndex !== -1) {
-        library[storyIndex].conversation = conversation;
-        library[storyIndex].updatedAt = Date.now();
+        const story = library[storyIndex];
+        story.conversation = conversation;
+        story.updatedAt = Date.now();
         if(themeImage) {
-            library[storyIndex].themeImage = themeImage;
+            story.themeImage = themeImage;
         }
         
         // Auto-title if it's "New Story"
-        if (library[storyIndex].title === 'New Story' && conversation.length > 0 && conversation[0].type === 'text') {
+        if (story.title === 'New Story' && conversation.length > 0 && conversation[0].type === 'text') {
              let text = conversation[0].content.replace(/[#*`]/g, '').trim();
              if (text.length > 30) text = text.substring(0, 30) + '...';
-             if (text) library[storyIndex].title = text;
+             if (text) story.title = text;
         }
         
-        saveLibrary();
+        await saveStoryToDB(story);
         renderLibraryList();
     }
 }
@@ -415,12 +498,12 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   const deleteButton = document.createElement('button');
   deleteButton.innerHTML = '&#128465;'; 
   deleteButton.title = 'Delete';
-  deleteButton.onclick = () => {
+  deleteButton.onclick = async () => {
     turnElement.remove();
     const story = library.find(s => s.id === currentStoryId);
     if(story) {
         story.conversation = story.conversation.filter((t) => t.id !== turn.id);
-        updateCurrentStory(story.conversation);
+        await updateCurrentStory(story.conversation);
     }
   };
 
@@ -460,7 +543,7 @@ function enterEditMode(turn: Turn, turnElement: HTMLElement) {
         
         const story = library.find(s => s.id === currentStoryId);
         if(story) {
-            updateCurrentStory(story.conversation);
+            await updateCurrentStory(story.conversation);
         }
 
         contentDiv.innerHTML = (await marked.parse(newContent)) as string;
@@ -524,7 +607,7 @@ async function generateTheme(prompt: string) {
 
 async function generateContent(prompt: string) {
   if (!currentStoryId) {
-      createNewStory();
+      await createNewStory();
   }
   
   const story = library.find(s => s.id === currentStoryId);
@@ -534,13 +617,11 @@ async function generateContent(prompt: string) {
   setLoading(true);
 
   // --- THEME GENERATION CHECK ---
-  // If story has no theme, trigger generation in background
   if (!story.themeImage) {
-      generateTheme(prompt).then(theme => {
+      generateTheme(prompt).then(async (theme) => {
           if (theme) {
               story.themeImage = theme;
-              updateCurrentStory(story.conversation, theme);
-              // Re-render to apply theme to existing bubbles
+              await updateCurrentStory(story.conversation, theme);
               renderConversation(story);
           }
       });
@@ -588,8 +669,6 @@ async function generateContent(prompt: string) {
       if (currentSettings.imageNegativePrompt) {
         systemInstructions.push(`Negative Prompt (avoid in images): ${currentSettings.imageNegativePrompt}.`);
       }
-      
-      // Explicit instruction for image count
       systemInstructions.push(`If you generate images, please try to generate exactly ${currentSettings.imageGenerationCount} image(s) that match the story events.`);
     }
 
@@ -619,47 +698,54 @@ async function generateContent(prompt: string) {
     let currentTextTurn: Turn | null = null;
 
     for await (const chunk of responseStream) {
-      const text = chunk.text;
+      // FIX: manually check parts to avoid accessing .text on chunks that only have inlineData
+      // Accessing chunk.text when it's undefined or on a mixed chunk in certain SDK versions triggers the warning.
       
-      if (text) {
-        partialText += text;
-        if (!currentTextTurn) {
-            currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
-            story.conversation.push(currentTextTurn);
-            await renderTurn(currentTextTurn, story.themeImage);
-        }
-        currentTextTurn.content = partialText;
-        
-        const turnElement = conversationContainer.querySelector(`[data-id="${currentTextTurn.id}"] .turn-content`) as HTMLElement;
-        if(turnElement) {
-            try {
-                const html = await marked.parse(partialText);
-                turnElement.innerHTML = html as string;
-            } catch (e) {
-                 turnElement.textContent = partialText;
-            }
-        }
-        
-        conversationContainer.scrollTop = conversationContainer.scrollHeight;
-
-      } else if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-        if (currentTextTurn) {
-            currentTextTurn = null; 
-            partialText = '';
-        }
-
-        const base64Data = chunk.candidates[0].content.parts[0].inlineData.data;
-        const imageTurn: Turn = {
-          id: Date.now().toString(),
-          type: 'image',
-          content: `data:image/png;base64,${base64Data}`,
-        };
-        story.conversation.push(imageTurn);
-        await renderTurn(imageTurn, story.themeImage);
+      const parts = chunk.candidates?.[0]?.content?.parts || [];
+      
+      for (const part of parts) {
+          if (part.text) {
+              const text = part.text;
+              partialText += text;
+              if (!currentTextTurn) {
+                  currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
+                  story.conversation.push(currentTextTurn);
+                  await renderTurn(currentTextTurn, story.themeImage);
+              }
+              currentTextTurn.content = partialText;
+              
+              const turnElement = conversationContainer.querySelector(`[data-id="${currentTextTurn.id}"] .turn-content`) as HTMLElement;
+              if(turnElement) {
+                  try {
+                      const html = await marked.parse(partialText);
+                      turnElement.innerHTML = html as string;
+                  } catch (e) {
+                      turnElement.textContent = partialText;
+                  }
+              }
+              conversationContainer.scrollTop = conversationContainer.scrollHeight;
+          } 
+          
+          if (part.inlineData) {
+              // End current text turn if an image arrives
+              if (currentTextTurn) {
+                  currentTextTurn = null; 
+                  partialText = '';
+              }
+              const base64Data = part.inlineData.data;
+              const imageTurn: Turn = {
+                  id: Date.now().toString(),
+                  type: 'image',
+                  content: `data:image/png;base64,${base64Data}`,
+              };
+              story.conversation.push(imageTurn);
+              await renderTurn(imageTurn, story.themeImage);
+              conversationContainer.scrollTop = conversationContainer.scrollHeight;
+          }
       }
     }
     
-    updateCurrentStory(story.conversation);
+    await updateCurrentStory(story.conversation);
 
   } catch (e) {
     console.error('Generation Error:', e);
@@ -670,7 +756,7 @@ async function generateContent(prompt: string) {
     };
     story.conversation.push(errorTurn);
     await renderTurn(errorTurn, story.themeImage);
-    updateCurrentStory(story.conversation);
+    await updateCurrentStory(story.conversation);
   } finally {
     setLoading(false);
   }
@@ -699,7 +785,6 @@ function setLoading(isLoading: boolean) {
 function toggleMainMenu() {
     mainMenu.classList.toggle('open');
     sidebarOverlay.classList.toggle('visible');
-    // Ensure secondary library sidebar is closed when main menu opens
     if(mainMenu.classList.contains('open')) {
         librarySidebar.classList.remove('open');
     }
@@ -712,10 +797,8 @@ function closeMainMenu() {
 
 function toggleLibrarySidebar() {
     librarySidebar.classList.toggle('open');
-    // We can keep overlay visible or handle specifically.
-    // If we open library from main menu, maybe close main menu?
     if (window.innerWidth < 768) {
-        mainMenu.classList.remove('open'); // Mobile behavior
+        mainMenu.classList.remove('open');
     }
     sidebarOverlay.classList.add('visible');
 }
@@ -749,8 +832,8 @@ promptForm.addEventListener('submit', (e) => {
 });
 
 saveButton.addEventListener('click', () => {
-    saveLibrary();
-    alert('Library saved to browser storage.');
+    // saveLibrary(); // Legacy button, now it just confirms storage
+    alert('Stories are automatically saved to your browser database (IndexedDB).');
 });
 
 exportButton.addEventListener('click', () => {
@@ -773,13 +856,19 @@ importFileInput.addEventListener('change', (event) => {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const result = e.target?.result as string;
       const importedData = JSON.parse(result);
       if (Array.isArray(importedData)) {
           if(importedData.length > 0 && importedData[0].conversation) {
-              library = [...library, ...importedData];
+              for(const s of importedData) {
+                  // Avoid duplicates by ID, or generate new ID if desired
+                  if(!library.find(ex => ex.id === s.id)) {
+                      await saveStoryToDB(s);
+                      library.push(s);
+                  }
+              }
           } else {
                const newStory: Story = {
                     id: generateId(),
@@ -788,10 +877,10 @@ importFileInput.addEventListener('change', (event) => {
                     createdAt: Date.now(),
                     updatedAt: Date.now()
                 };
+                await saveStoryToDB(newStory);
                 library.push(newStory);
           }
         
-        saveLibrary();
         renderLibraryList();
         alert('Import successful!');
       } else {
@@ -838,4 +927,4 @@ tabButtons.forEach(btn => {
 
 // Initialization
 loadSettings();
-loadLibrary();
+initLibrary();
