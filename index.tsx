@@ -13,6 +13,7 @@ const promptInput = document.getElementById('prompt-input') as HTMLInputElement;
 const submitButton = document.getElementById('submit-button') as HTMLButtonElement;
 const conversationContainer = document.getElementById('conversation-container') as HTMLElement;
 const welcomeMessage = document.getElementById('welcome-message') as HTMLElement;
+const bgMusicPlayer = document.getElementById('bg-music-player') as HTMLAudioElement;
 
 // Main Menu Elements
 const mainMenu = document.getElementById('main-menu') as HTMLElement;
@@ -69,6 +70,14 @@ const imageNegativePromptInput = document.getElementById('image-negative-prompt'
 const imageApiKeyInput = document.getElementById('image-api-key') as HTMLInputElement;
 const imageCountInput = document.getElementById('image-count') as HTMLInputElement;
 
+// Audio & Theme Settings
+const storyFontSelect = document.getElementById('story-font') as HTMLSelectElement;
+const ttsVoiceSelect = document.getElementById('tts-voice') as HTMLSelectElement;
+const borderUploadInput = document.getElementById('border-upload') as HTMLInputElement;
+const musicUploadInput = document.getElementById('music-upload') as HTMLInputElement;
+const clearBorderBtn = document.getElementById('clear-border-btn') as HTMLButtonElement;
+const clearMusicBtn = document.getElementById('clear-music-btn') as HTMLButtonElement;
+
 
 // --- TYPE DEFINITIONS ---
 type Turn = {
@@ -84,6 +93,8 @@ interface Story {
     createdAt: number;
     updatedAt: number;
     themeImage?: string; // Base64 image for the bezel/border
+    fontFamily?: string; 
+    bgMusic?: string; // Base64 audio data URI
 }
 
 interface AppSettings {
@@ -99,11 +110,15 @@ interface AppSettings {
   imageStyle: string;
   imageNegativePrompt: string;
   imageGenerationCount: number;
+  // Audio settings
+  ttsVoice: string;
+  manualFont: string; // If set, overrides auto-detected font
 }
 
 // --- STATE ---
 let library: Story[] = [];
 let currentStoryId: string | null = null;
+let audioContext: AudioContext | null = null;
 
 const DEFAULT_SETTINGS: AppSettings = {
   chatProvider: 'google',
@@ -118,6 +133,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageStyle: 'none',
   imageNegativePrompt: '',
   imageGenerationCount: 1,
+  ttsVoice: 'Kore',
+  manualFont: '',
 };
 
 let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
@@ -188,6 +205,54 @@ async function deleteStoryFromDB(id: string): Promise<void> {
     }
 }
 
+// --- AUDIO HELPERS ---
+
+function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+// Decodes raw PCM or Encoded Audio from Gemini TTS
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Use browser's decodeAudioData which supports many formats including mp3/wav if returned, 
+// OR handle raw PCM if specifically requested. Gemini 'audio/mp3' output is standard.
+async function playAudioBytes(base64Data: string) {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    // Resume context if suspended (browser autoplay policy)
+    if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+    }
+
+    try {
+        const arrayBuffer = decode(base64Data).buffer;
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+    } catch (e) {
+        console.error("Error decoding/playing audio:", e);
+        alert("Could not play audio. Format may not be supported.");
+    }
+}
+
+
 // --- HELPERS ---
 function generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -200,53 +265,7 @@ function formatDate(timestamp: number): string {
 // --- LIBRARY LOGIC ---
 
 async function initLibrary() {
-    // 1. Load from DB
     library = await getAllStoriesFromDB();
-
-    // 2. Migration: Check for legacy LocalStorage data
-    const stored = localStorage.getItem('storyWeaverLibrary');
-    const oldConv = localStorage.getItem('storyWeaverConversation');
-    let migrated = false;
-
-    if (stored) {
-        try {
-            const legacyLib = JSON.parse(stored);
-            if (Array.isArray(legacyLib)) {
-                for (const story of legacyLib) {
-                    if (!library.find(s => s.id === story.id)) {
-                         await saveStoryToDB(story);
-                         library.push(story);
-                    }
-                }
-            }
-            localStorage.removeItem('storyWeaverLibrary'); // Clear after migration
-            migrated = true;
-        } catch (e) { console.error('Migration error (lib)', e); }
-    }
-
-    if (oldConv) {
-        try {
-            const conversation = JSON.parse(oldConv);
-            if (conversation.length > 0) {
-                 const newStory: Story = {
-                    id: generateId(),
-                    title: 'Restored Story',
-                    conversation: conversation,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now()
-                };
-                await saveStoryToDB(newStory);
-                library.push(newStory);
-            }
-            localStorage.removeItem('storyWeaverConversation');
-            migrated = true;
-        } catch (e) { console.error('Migration error (conv)', e); }
-    }
-
-    if (migrated) {
-        console.log("Migration from LocalStorage to IndexedDB complete.");
-    }
-
     renderLibraryList();
     
     if (library.length > 0 && !currentStoryId) {
@@ -266,14 +285,11 @@ async function createNewStory() {
         updatedAt: Date.now()
     };
     
-    // Save to DB first
     await saveStoryToDB(newStory);
     
     library.unshift(newStory);
     loadStory(newStory.id);
     renderLibraryList();
-    
-    // Auto-close sidebar
     closeLibrarySidebar();
 }
 
@@ -284,6 +300,15 @@ function loadStory(id: string) {
     currentStoryId = id;
     renderConversation(story); 
     renderLibraryList(); 
+    
+    // Handle BG Music
+    if (story.bgMusic) {
+        bgMusicPlayer.src = story.bgMusic;
+        bgMusicPlayer.play().catch(e => console.log('Autoplay blocked', e));
+    } else {
+        bgMusicPlayer.pause();
+        bgMusicPlayer.src = "";
+    }
 }
 
 async function deleteStory(id: string, event: Event) {
@@ -298,12 +323,13 @@ async function deleteStory(id: string, event: Event) {
         conversationContainer.innerHTML = '';
         conversationContainer.appendChild(welcomeMessage); 
         welcomeMessage.style.display = 'block';
+        bgMusicPlayer.pause();
     }
     
     renderLibraryList();
 }
 
-async function updateCurrentStory(conversation: Turn[], themeImage?: string) {
+async function updateCurrentStory(conversation: Turn[], updates: Partial<Story> = {}) {
     if (!currentStoryId) {
         await createNewStory();
     }
@@ -313,11 +339,11 @@ async function updateCurrentStory(conversation: Turn[], themeImage?: string) {
         const story = library[storyIndex];
         story.conversation = conversation;
         story.updatedAt = Date.now();
-        if(themeImage) {
-            story.themeImage = themeImage;
-        }
         
-        // Auto-title if it's "New Story"
+        // Merge updates (theme, font, music)
+        Object.assign(story, updates);
+        
+        // Auto-title
         if (story.title === 'New Story' && conversation.length > 0 && conversation[0].type === 'text') {
              let text = conversation[0].content.replace(/[#*`]/g, '').trim();
              if (text.length > 30) text = text.substring(0, 30) + '...';
@@ -408,6 +434,10 @@ function updateSettingsUI() {
   imageStyleSelect.value = currentSettings.imageStyle;
   imageNegativePromptInput.value = currentSettings.imageNegativePrompt;
   imageCountInput.value = currentSettings.imageGenerationCount.toString();
+  
+  // Audio & Theme
+  storyFontSelect.value = currentSettings.manualFont;
+  ttsVoiceSelect.value = currentSettings.ttsVoice;
 }
 
 function saveSettingsFromUI() {
@@ -431,6 +461,42 @@ function saveSettingsFromUI() {
   currentSettings.imageStyle = imageStyleSelect.value;
   currentSettings.imageNegativePrompt = imageNegativePromptInput.value.trim();
   currentSettings.imageGenerationCount = parseInt(imageCountInput.value, 10) || 1;
+  
+  currentSettings.manualFont = storyFontSelect.value;
+  currentSettings.ttsVoice = ttsVoiceSelect.value;
+  
+  // Handle File Uploads (Update current story immediately)
+  const borderFile = borderUploadInput.files?.[0];
+  const musicFile = musicUploadInput.files?.[0];
+  
+  if (currentStoryId && (borderFile || musicFile || currentSettings.manualFont)) {
+      const updates: Partial<Story> = {};
+      
+      const updatePromises = [];
+      
+      if (borderFile) {
+          updatePromises.push(blobToBase64(borderFile).then(b64 => updates.themeImage = b64));
+      }
+      
+      if (musicFile) {
+          updatePromises.push(blobToBase64(musicFile).then(b64 => {
+              updates.bgMusic = b64;
+              bgMusicPlayer.src = b64;
+              bgMusicPlayer.play();
+          }));
+      }
+      
+      if (currentSettings.manualFont) {
+          updates.fontFamily = currentSettings.manualFont;
+      }
+      
+      Promise.all(updatePromises).then(() => {
+          const story = library.find(s => s.id === currentStoryId);
+          if (story) {
+             updateCurrentStory(story.conversation, updates).then(() => loadStory(story.id));
+          }
+      });
+  }
 
   saveSettingsToStorage();
   settingsDialog.close();
@@ -442,7 +508,7 @@ function saveSettingsFromUI() {
 /**
  * Renders a single turn into the conversation container.
  */
-async function renderTurn(turn: Turn, themeImage?: string) {
+async function renderTurn(turn: Turn, themeImage?: string, fontFamily?: string) {
   let turnElement = conversationContainer.querySelector(`[data-id="${turn.id}"]`) as HTMLElement;
   let isNew = false;
   
@@ -452,20 +518,20 @@ async function renderTurn(turn: Turn, themeImage?: string) {
       turnElement.className = 'turn';
       turnElement.dataset.id = turn.id;
       
-      // Apply theme if available
-      if (themeImage) {
-          turnElement.style.setProperty('--story-theme', `url('${themeImage}')`);
-      }
-
       const contentElement = document.createElement('div');
       contentElement.className = 'turn-content';
       turnElement.appendChild(contentElement);
       
       turnElement.appendChild(createTurnControls(turn, turnElement));
       conversationContainer.appendChild(turnElement);
-  } else if (themeImage && !turnElement.style.getPropertyValue('--story-theme')) {
-       // Update existing turn if theme arrived late
-       turnElement.style.setProperty('--story-theme', `url('${themeImage}')`);
+  }
+
+  // Update Styles always (in case they changed)
+  if (themeImage) {
+      turnElement.style.setProperty('--story-theme', `url('${themeImage}')`);
+  }
+  if (fontFamily) {
+      turnElement.style.setProperty('--story-font', fontFamily);
   }
 
   const contentElement = turnElement.querySelector('.turn-content') as HTMLElement;
@@ -494,6 +560,31 @@ async function renderTurn(turn: Turn, themeImage?: string) {
 function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   const controls = document.createElement('div');
   controls.className = 'turn-controls';
+  
+  // TTS Button
+  if (turn.type === 'text') {
+      const speakButton = document.createElement('button');
+      speakButton.innerHTML = '🔊'; 
+      speakButton.title = 'Read Aloud';
+      speakButton.onclick = () => {
+          // Get text content (strip basic markdown for speech stability if needed, 
+          // or rely on model to ignore markdown chars). 
+          // Simple strip for cleaner speech:
+          const textToSpeak = turn.content.replace(/[#*`]/g, '');
+          speakText(textToSpeak);
+      };
+      controls.appendChild(speakButton);
+  }
+
+  const editButton = document.createElement('button');
+  editButton.innerHTML = '&#9998;'; 
+  editButton.title = 'Edit';
+  if (turn.type === 'image') {
+    editButton.disabled = true;
+  }
+  editButton.onclick = () => {
+    enterEditMode(turn, turnElement);
+  };
 
   const deleteButton = document.createElement('button');
   deleteButton.innerHTML = '&#128465;'; 
@@ -505,16 +596,6 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
         story.conversation = story.conversation.filter((t) => t.id !== turn.id);
         await updateCurrentStory(story.conversation);
     }
-  };
-
-  const editButton = document.createElement('button');
-  editButton.innerHTML = '&#9998;'; 
-  editButton.title = 'Edit';
-  if (turn.type === 'image') {
-    editButton.disabled = true;
-  }
-  editButton.onclick = () => {
-    enterEditMode(turn, turnElement);
   };
 
   controls.appendChild(editButton);
@@ -561,49 +642,101 @@ async function renderConversation(story: Story) {
   conversationContainer.innerHTML = '';
   const conversation = story.conversation;
   
+  // Font logic: Manual override > Story specific > Default
+  const fontToUse = currentSettings.manualFont || story.fontFamily;
+  
   if (conversation.length === 0) {
       conversationContainer.appendChild(welcomeMessage);
       welcomeMessage.style.display = 'block';
   } else {
       welcomeMessage.style.display = 'none';
       for (const turn of conversation) {
-          await renderTurn(turn, story.themeImage);
+          await renderTurn(turn, story.themeImage, fontToUse);
       }
   }
 }
 
 // --- API & GENERATION LOGIC ---
 
-async function generateTheme(prompt: string) {
+// Generates both a border image and a suggested font
+async function generateStoryThemeMetadata(prompt: string): Promise<{image?: string, font?: string}> {
     try {
-        console.log('[DEBUG] Generating theme for prompt:', prompt);
+        console.log('[DEBUG] Generating theme metadata for prompt:', prompt);
         const apiKey = currentSettings.imageApiKey || currentSettings.chatApiKey || process.env.API_KEY;
         const ai = new GoogleGenAI({ apiKey: apiKey });
         
-        const themePrompt = `Create a seamless, decorative, rectangular frame border texture relevant to the following story theme: "${prompt}". 
-        The image should be a frame design or a seamless texture suitable for a CSS border-image. 
-        No text. High contrast or distinct pattern preferred. Square aspect ratio.`;
-        
-        // Use gemini-2.5-flash-image for speed
-        const response = await ai.models.generateContent({
+        // 1. Generate Image (Square Frame)
+        const imageResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: themePrompt,
+            contents: `Create a seamless, decorative, rectangular frame border texture relevant to the following story theme: "${prompt}". 
+            High contrast. Square aspect ratio. No text.`,
             config: {
                 responseModalities: [Modality.IMAGE],
                 imageConfig: { aspectRatio: '1:1' }
             }
         });
         
-        const imgPart = response.candidates?.[0]?.content?.parts?.[0];
+        let imageBase64;
+        const imgPart = imageResponse.candidates?.[0]?.content?.parts?.[0];
         if (imgPart && imgPart.inlineData) {
-            const base64 = `data:image/png;base64,${imgPart.inlineData.data}`;
-            return base64;
+            imageBase64 = `data:image/png;base64,${imgPart.inlineData.data}`;
         }
+        
+        // 2. Generate Font Suggestion (Text)
+        const fontResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze the mood of this story prompt: "${prompt}". 
+            Suggest exactly one CSS font-family from this list that best fits: 
+            'Roboto', 'Merriweather', 'Courier Prime', 'Dancing Script', 'Cinzel'.
+            Return ONLY the font family name.`,
+        });
+        
+        let fontName = fontResponse.text?.trim().replace(/['"]/g, '');
+        // Validate against our list to be safe
+        const validFonts = ['Roboto', 'Merriweather', 'Courier Prime', 'Dancing Script', 'Cinzel'];
+        if (!validFonts.some(f => fontName?.includes(f))) {
+            fontName = undefined;
+        }
+
+        return { image: imageBase64, font: fontName };
+
     } catch (e) {
         console.error('Theme generation failed', e);
+        return {};
     }
-    return undefined;
 }
+
+
+async function speakText(text: string) {
+    if (!text) return;
+    try {
+        const apiKey = currentSettings.chatApiKey || process.env.API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
+        
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash-preview-tts",
+          contents: [{ parts: [{ text: text }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: currentSettings.ttsVoice },
+                },
+            },
+          },
+        });
+        
+        const audioPart = response.candidates?.[0]?.content?.parts?.[0];
+        if (audioPart && audioPart.inlineData) {
+            await playAudioBytes(audioPart.inlineData.data);
+        }
+
+    } catch(e) {
+        console.error("TTS Error:", e);
+        alert("Text-to-Speech generation failed. Check API key/Quota.");
+    }
+}
+
 
 async function generateContent(prompt: string) {
   if (!currentStoryId) {
@@ -617,12 +750,18 @@ async function generateContent(prompt: string) {
   setLoading(true);
 
   // --- THEME GENERATION CHECK ---
-  if (!story.themeImage) {
-      generateTheme(prompt).then(async (theme) => {
-          if (theme) {
-              story.themeImage = theme;
-              await updateCurrentStory(story.conversation, theme);
-              renderConversation(story);
+  // If story has no theme (and no manual override set), generate one
+  if (!story.themeImage && !story.fontFamily) {
+      generateStoryThemeMetadata(prompt).then(async (metadata) => {
+          const updates: Partial<Story> = {};
+          if (metadata.image) updates.themeImage = metadata.image;
+          if (metadata.font) updates.fontFamily = metadata.font;
+          
+          if (Object.keys(updates).length > 0) {
+              await updateCurrentStory(story.conversation, updates);
+              // Force re-render to apply new font/border
+              const updatedStory = library.find(s => s.id === currentStoryId);
+              if(updatedStory) renderConversation(updatedStory);
           }
       });
   }
@@ -697,10 +836,10 @@ async function generateContent(prompt: string) {
     let partialText = '';
     let currentTextTurn: Turn | null = null;
 
+    // Use font override if present, else story font
+    const fontToUse = currentSettings.manualFont || story.fontFamily;
+
     for await (const chunk of responseStream) {
-      // FIX: manually check parts to avoid accessing .text on chunks that only have inlineData
-      // Accessing chunk.text when it's undefined or on a mixed chunk in certain SDK versions triggers the warning.
-      
       const parts = chunk.candidates?.[0]?.content?.parts || [];
       
       for (const part of parts) {
@@ -710,7 +849,7 @@ async function generateContent(prompt: string) {
               if (!currentTextTurn) {
                   currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
                   story.conversation.push(currentTextTurn);
-                  await renderTurn(currentTextTurn, story.themeImage);
+                  await renderTurn(currentTextTurn, story.themeImage, fontToUse);
               }
               currentTextTurn.content = partialText;
               
@@ -727,7 +866,6 @@ async function generateContent(prompt: string) {
           } 
           
           if (part.inlineData) {
-              // End current text turn if an image arrives
               if (currentTextTurn) {
                   currentTextTurn = null; 
                   partialText = '';
@@ -739,7 +877,7 @@ async function generateContent(prompt: string) {
                   content: `data:image/png;base64,${base64Data}`,
               };
               story.conversation.push(imageTurn);
-              await renderTurn(imageTurn, story.themeImage);
+              await renderTurn(imageTurn, story.themeImage, fontToUse);
               conversationContainer.scrollTop = conversationContainer.scrollHeight;
           }
       }
@@ -923,6 +1061,30 @@ tabButtons.forEach(btn => {
         const tabId = (btn as HTMLElement).dataset.tab;
         if(tabId) document.getElementById(tabId)?.classList.add('active');
     });
+});
+
+clearBorderBtn.addEventListener('click', () => {
+    borderUploadInput.value = '';
+    if (currentStoryId) {
+        const story = library.find(s => s.id === currentStoryId);
+        if(story) {
+            delete story.themeImage; // Clear manual image
+            updateCurrentStory(story.conversation, { themeImage: undefined }).then(() => loadStory(story.id));
+        }
+    }
+});
+
+clearMusicBtn.addEventListener('click', () => {
+     musicUploadInput.value = '';
+     bgMusicPlayer.pause();
+     bgMusicPlayer.src = "";
+     if (currentStoryId) {
+        const story = library.find(s => s.id === currentStoryId);
+        if(story) {
+            delete story.bgMusic;
+            updateCurrentStory(story.conversation, { bgMusic: undefined });
+        }
+    }
 });
 
 // Initialization
