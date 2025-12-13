@@ -2,6 +2,7 @@
 :root {
   --background-color: #121212;
   --surface-color: #1e1e1e;
+  --sidebar-color: #161616;
   --primary-color: #bb86fc;
   --primary-variant-color: #3700b3;
   --secondary-color: #03dac6;
@@ -10,6 +11,7 @@
   --border-color: #333;
   --font-family: 'Roboto', sans-serif;
   --input-bg: #2c2c2c;
+  --danger-color: #cf6679;
 }
 
 * {
@@ -42,17 +44,153 @@ header {
   background-color: var(--surface-color);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .controls button {
   margin-left: 0.5rem;
 }
 
+/* Sidebar / Library */
+#library-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 300px;
+  background-color: var(--sidebar-color);
+  border-right: 1px solid var(--border-color);
+  z-index: 100;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+#library-sidebar.open {
+  transform: translateX(0);
+}
+
+#sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 90;
+  display: none;
+  backdrop-filter: blur(2px);
+}
+
+#sidebar-overlay.visible {
+  display: block;
+}
+
+.sidebar-header {
+  padding: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-header h2 {
+  font-size: 1.2rem;
+  color: var(--primary-color);
+}
+
+#new-story-btn {
+  margin: 1rem;
+  width: calc(100% - 2rem);
+  background-color: var(--primary-color);
+  color: var(--on-primary-color);
+  border-radius: 8px;
+}
+
+#story-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 0 1rem 1rem 1rem;
+}
+
+.story-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  transition: background-color 0.2s;
+  border: 1px solid transparent;
+}
+
+.story-item:hover {
+  background-color: rgba(255,255,255,0.05);
+}
+
+.story-item.active {
+  background-color: rgba(187, 134, 252, 0.15);
+  border-color: var(--primary-color);
+}
+
+.story-info {
+  overflow: hidden;
+}
+
+.story-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.story-date {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.delete-story-btn {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 1.2rem;
+  padding: 0.25rem;
+  margin-left: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.story-item:hover .delete-story-btn {
+  opacity: 1;
+}
+
+.delete-story-btn:hover {
+  color: var(--danger-color);
+}
+
+
 /* Main Conversation Area */
 main {
   flex-grow: 1;
   overflow-y: auto;
   padding: 1.5rem;
+  position: relative;
+}
+
+#welcome-message {
+    text-align: center;
+    color: #888;
+    margin-top: 2rem;
 }
 
 .turn {
@@ -65,6 +203,13 @@ main {
   max-width: 800px;
   margin-left: auto;
   margin-right: auto;
+  /* Ensure text color is inherited and visible */
+  color: var(--on-surface-color); 
+}
+
+/* Explicitly set color for common markdown elements to avoid any browser default overrides */
+.turn p, .turn li, .turn h1, .turn h2, .turn h3, .turn h4, .turn h5, .turn h6, .turn span, .turn div {
+    color: inherit; 
 }
 
 .turn img {
@@ -195,7 +340,7 @@ button:disabled {
   100% { transform: rotate(360deg); }
 }
 
-/* --- SETTINGS DIALOG --- */
+/* --- SETTINGS & HELP DIALOG --- */
 
 dialog {
   background-color: var(--surface-color);
@@ -236,6 +381,31 @@ dialog::backdrop {
 }
 .icon-btn:hover {
   background-color: rgba(255,255,255,0.1);
+}
+
+/* Help Content */
+.help-content {
+  padding: 1.5rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+.help-content h3 {
+  color: var(--primary-color);
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.help-content h3:first-child {
+  margin-top: 0;
+}
+
+.help-content ul {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+.help-content li {
+  margin-bottom: 0.5rem;
 }
 
 /* Tabs */
@@ -333,12 +503,12 @@ dialog::backdrop {
   gap: 0.75rem;
 }
 
-#cancel-settings {
+#cancel-settings, #close-help-action {
   background-color: transparent;
   border: 1px solid var(--border-color);
   color: var(--on-surface-color);
 }
 
-#cancel-settings:hover {
+#cancel-settings:hover, #close-help-action:hover {
   background-color: rgba(255,255,255,0.1);
 }

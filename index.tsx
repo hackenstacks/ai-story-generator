@@ -12,10 +12,21 @@ const promptForm = document.getElementById('prompt-form') as HTMLFormElement;
 const promptInput = document.getElementById('prompt-input') as HTMLInputElement;
 const submitButton = document.getElementById('submit-button') as HTMLButtonElement;
 const conversationContainer = document.getElementById('conversation-container') as HTMLElement;
+const welcomeMessage = document.getElementById('welcome-message') as HTMLElement;
+
 const saveButton = document.getElementById('save-button') as HTMLButtonElement;
 const exportButton = document.getElementById('export-button') as HTMLButtonElement;
 const importButton = document.getElementById('import-button') as HTMLButtonElement;
 const importFileInput = document.getElementById('import-file') as HTMLInputElement;
+
+// Sidebar / Library Elements
+const menuButton = document.getElementById('menu-button') as HTMLButtonElement;
+const librarySidebar = document.getElementById('library-sidebar') as HTMLElement;
+const closeSidebarBtn = document.getElementById('close-sidebar-btn') as HTMLButtonElement;
+const sidebarOverlay = document.getElementById('sidebar-overlay') as HTMLElement;
+const newStoryBtn = document.getElementById('new-story-btn') as HTMLButtonElement;
+const storyList = document.getElementById('story-list') as HTMLElement;
+
 
 // Settings Elements
 const settingsButton = document.getElementById('settings-button') as HTMLButtonElement;
@@ -25,6 +36,13 @@ const closeSettingsBtn = document.getElementById('close-settings-btn') as HTMLBu
 const cancelSettingsBtn = document.getElementById('cancel-settings') as HTMLButtonElement;
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
+
+// Help Elements
+const helpButton = document.getElementById('help-button') as HTMLButtonElement;
+const helpDialog = document.getElementById('help-dialog') as HTMLDialogElement;
+const closeHelpBtn = document.getElementById('close-help-btn') as HTMLButtonElement;
+const closeHelpActionBtn = document.getElementById('close-help-action') as HTMLButtonElement;
+
 
 // Settings Form Inputs
 const chatProviderSelect = document.getElementById('chat-provider') as HTMLSelectElement;
@@ -52,6 +70,14 @@ type Turn = {
   content: string; // For text, it's markdown. For image, it's base64 data URI.
 };
 
+interface Story {
+    id: string;
+    title: string;
+    conversation: Turn[];
+    createdAt: number;
+    updatedAt: number;
+}
+
 interface AppSettings {
   chatProvider: 'google' | 'custom';
   chatModel: string;
@@ -67,7 +93,9 @@ interface AppSettings {
 }
 
 // --- STATE ---
-let conversation: Turn[] = [];
+let library: Story[] = [];
+let currentStoryId: string | null = null;
+
 
 const DEFAULT_SETTINGS: AppSettings = {
   chatProvider: 'google',
@@ -84,6 +112,166 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
+
+// --- HELPERS ---
+function generateId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+function formatDate(timestamp: number): string {
+    return new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+
+// --- LIBRARY LOGIC ---
+
+function loadLibrary() {
+    const stored = localStorage.getItem('storyWeaverLibrary');
+    if (stored) {
+        try {
+            library = JSON.parse(stored);
+        } catch (e) {
+            console.error('Failed to parse library', e);
+            library = [];
+        }
+    }
+    
+    // Legacy migration: check for old single conversation
+    const oldConv = localStorage.getItem('storyWeaverConversation');
+    if (oldConv && library.length === 0) {
+        try {
+            const conversation = JSON.parse(oldConv);
+            if (conversation.length > 0) {
+                const newStory: Story = {
+                    id: generateId(),
+                    title: 'Restored Story',
+                    conversation: conversation,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+                library.push(newStory);
+                saveLibrary();
+                localStorage.removeItem('storyWeaverConversation'); // Cleanup
+            }
+        } catch(e) {}
+    }
+
+    renderLibraryList();
+    
+    if (library.length > 0 && !currentStoryId) {
+        // Load most recent story
+        const recent = library.sort((a,b) => b.updatedAt - a.updatedAt)[0];
+        loadStory(recent.id);
+    }
+}
+
+function saveLibrary() {
+    localStorage.setItem('storyWeaverLibrary', JSON.stringify(library));
+}
+
+function createNewStory() {
+    const newStory: Story = {
+        id: generateId(),
+        title: 'New Story',
+        conversation: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    library.unshift(newStory);
+    saveLibrary();
+    loadStory(newStory.id);
+    renderLibraryList();
+    
+    // Close sidebar on mobile/small screens when creating new
+    if(window.innerWidth < 768) {
+        closeSidebar();
+    }
+}
+
+function loadStory(id: string) {
+    const story = library.find(s => s.id === id);
+    if (!story) return;
+
+    currentStoryId = id;
+    renderConversation(story.conversation);
+    renderLibraryList(); // To update active state
+}
+
+function deleteStory(id: string, event: Event) {
+    event.stopPropagation(); // Prevent loading the story
+    if(!confirm('Are you sure you want to delete this story?')) return;
+
+    library = library.filter(s => s.id !== id);
+    saveLibrary();
+    
+    if (currentStoryId === id) {
+        currentStoryId = null;
+        conversationContainer.innerHTML = '';
+        conversationContainer.appendChild(welcomeMessage); // Show welcome
+        welcomeMessage.style.display = 'block';
+    }
+    
+    renderLibraryList();
+}
+
+function updateCurrentStory(conversation: Turn[]) {
+    if (!currentStoryId) {
+        // Should have been created by now, but just in case
+        createNewStory();
+    }
+    
+    const storyIndex = library.findIndex(s => s.id === currentStoryId);
+    if (storyIndex !== -1) {
+        library[storyIndex].conversation = conversation;
+        library[storyIndex].updatedAt = Date.now();
+        
+        // Auto-title if it's "New Story" and has content
+        if (library[storyIndex].title === 'New Story' && conversation.length > 0 && conversation[0].type === 'text') {
+            // Take first 30 chars of first turn
+             let text = conversation[0].content.replace(/[#*`]/g, '').trim();
+             if (text.length > 30) text = text.substring(0, 30) + '...';
+             if (text) library[storyIndex].title = text;
+        }
+        
+        saveLibrary();
+        renderLibraryList(); // update title/time
+    }
+}
+
+function renderLibraryList() {
+    storyList.innerHTML = '';
+    // Sort by updated desc
+    const sorted = [...library].sort((a,b) => b.updatedAt - a.updatedAt);
+    
+    sorted.forEach(story => {
+        const item = document.createElement('div');
+        item.className = `story-item ${story.id === currentStoryId ? 'active' : ''}`;
+        item.onclick = () => loadStory(story.id);
+        
+        const info = document.createElement('div');
+        info.className = 'story-info';
+        
+        const title = document.createElement('span');
+        title.className = 'story-title';
+        title.textContent = story.title;
+        
+        const date = document.createElement('div');
+        date.className = 'story-date';
+        date.textContent = formatDate(story.updatedAt);
+        
+        info.appendChild(title);
+        info.appendChild(date);
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-story-btn';
+        delBtn.innerHTML = '&times;';
+        delBtn.title = 'Delete Story';
+        delBtn.onclick = (e) => deleteStory(story.id, e);
+        
+        item.appendChild(info);
+        item.appendChild(delBtn);
+        storyList.appendChild(item);
+    });
+}
 
 
 // --- SETTINGS LOGIC ---
@@ -104,7 +292,6 @@ function updateSettingsUI() {
   chatProviderSelect.value = currentSettings.chatProvider;
   
   if (currentSettings.chatProvider === 'google') {
-    // If the saved model isn't in the preset dropdown, switch to custom or default to flash-image
     if ([...chatModelSelect.options].some(o => o.value === currentSettings.chatModel)) {
       chatModelSelect.value = currentSettings.chatModel;
     } else {
@@ -156,68 +343,55 @@ function saveSettingsFromUI() {
   settingsDialog.close();
 }
 
-// Settings Event Listeners
-settingsButton.addEventListener('click', () => {
-  updateSettingsUI();
-  settingsDialog.showModal();
-});
-
-closeSettingsBtn.addEventListener('click', () => settingsDialog.close());
-cancelSettingsBtn.addEventListener('click', () => settingsDialog.close());
-
-settingsForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    saveSettingsFromUI();
-});
-
-// Dynamic Settings Logic
-chatProviderSelect.addEventListener('change', () => {
-    if (chatProviderSelect.value === 'google') {
-        chatModelGroup.classList.remove('hidden');
-        chatCustomModelGroup.classList.add('hidden');
-    } else {
-        chatModelGroup.classList.add('hidden');
-        chatCustomModelGroup.classList.remove('hidden');
-    }
-});
-
-// Tabs
-tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-        tabButtons.forEach(b => b.classList.remove('active'));
-        tabContents.forEach(c => c.classList.remove('active'));
-        
-        btn.classList.add('active');
-        const tabId = (btn as HTMLElement).dataset.tab;
-        if(tabId) document.getElementById(tabId)?.classList.add('active');
-    });
-});
-
 
 // --- RENDERING LOGIC ---
 
 /**
  * Renders a single turn into the conversation container.
  */
-function renderTurn(turn: Turn) {
-  const turnElement = document.createElement('div');
-  turnElement.className = 'turn';
-  turnElement.dataset.id = turn.id;
+async function renderTurn(turn: Turn) {
+  // Check if turn already exists to avoid duplication
+  let turnElement = conversationContainer.querySelector(`[data-id="${turn.id}"]`) as HTMLElement;
+  let isNew = false;
+  
+  if (!turnElement) {
+      isNew = true;
+      turnElement = document.createElement('div');
+      turnElement.className = 'turn';
+      turnElement.dataset.id = turn.id;
 
-  const contentElement = document.createElement('div');
-  contentElement.className = 'turn-content';
+      const contentElement = document.createElement('div');
+      contentElement.className = 'turn-content';
+      turnElement.appendChild(contentElement);
+      
+      turnElement.appendChild(createTurnControls(turn, turnElement));
+      conversationContainer.appendChild(turnElement);
+  }
+
+  const contentElement = turnElement.querySelector('.turn-content') as HTMLElement;
 
   if (turn.type === 'text') {
-    contentElement.innerHTML = marked.parse(turn.content) as string;
+    // IMPORTANT: Await marked.parse because newer versions might be async or return a Promise.
+    // Also handle possible empty content to avoid "undefined" string.
+    try {
+        const rawContent = turn.content || '';
+        let html = await marked.parse(rawContent);
+        contentElement.innerHTML = html as string;
+    } catch(e) {
+        console.error('Markdown parse error:', e);
+        contentElement.textContent = turn.content; // Fallback
+    }
   } else {
+    // Clear existing content (e.g. if switching types or reloading)
+    contentElement.innerHTML = '';
     const img = new Image();
     img.src = turn.content;
     contentElement.appendChild(img);
   }
 
-  turnElement.appendChild(createTurnControls(turn, turnElement));
-  conversationContainer.appendChild(turnElement);
-  conversationContainer.scrollTop = conversationContainer.scrollHeight;
+  if (isNew) {
+      conversationContainer.scrollTop = conversationContainer.scrollHeight;
+  }
 }
 
 /**
@@ -232,14 +406,19 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   deleteButton.title = 'Delete';
   deleteButton.onclick = () => {
     turnElement.remove();
-    conversation = conversation.filter((t) => t.id !== turn.id);
+    // Update State
+    const story = library.find(s => s.id === currentStoryId);
+    if(story) {
+        story.conversation = story.conversation.filter((t) => t.id !== turn.id);
+        updateCurrentStory(story.conversation);
+    }
   };
 
   const editButton = document.createElement('button');
   editButton.innerHTML = '&#9998;'; // Pencil icon
   editButton.title = 'Edit';
   if (turn.type === 'image') {
-    editButton.disabled = true; // Disable editing for images for now
+    editButton.disabled = true;
   }
   editButton.onclick = () => {
     enterEditMode(turn, turnElement);
@@ -271,6 +450,13 @@ function enterEditMode(turn: Turn, turnElement: HTMLElement) {
     saveEditButton.onclick = async () => {
         const newContent = textArea.value;
         turn.content = newContent;
+        
+        // Update State
+        const story = library.find(s => s.id === currentStoryId);
+        if(story) {
+            updateCurrentStory(story.conversation);
+        }
+
         contentDiv.innerHTML = (await marked.parse(newContent)) as string;
         contentDiv.style.display = 'block';
         editContainer.remove();
@@ -283,50 +469,69 @@ function enterEditMode(turn: Turn, turnElement: HTMLElement) {
 
 
 /**
- * Renders the entire conversation from the global state.
+ * Renders the entire conversation.
  */
-function renderConversation() {
+async function renderConversation(conversation: Turn[]) {
   conversationContainer.innerHTML = '';
-  conversation.forEach(renderTurn);
+  if (conversation.length === 0) {
+      conversationContainer.appendChild(welcomeMessage);
+      welcomeMessage.style.display = 'block';
+  } else {
+      welcomeMessage.style.display = 'none';
+      for (const turn of conversation) {
+          await renderTurn(turn);
+      }
+  }
 }
 
 // --- API & GENERATION LOGIC ---
 
-/**
- * Calls the Gemini API and streams the response.
- */
 async function generateContent(prompt: string) {
+  // Ensure we have a story to add to
+  if (!currentStoryId) {
+      createNewStory();
+  }
+  
+  // Get current conversation from library to append to
+  const story = library.find(s => s.id === currentStoryId);
+  if (!story) return; // Should not happen
+  
+  welcomeMessage.style.display = 'none';
   setLoading(true);
+
+  // Optimistic UI: Add user turn immediately? 
+  // For this app, we generate based on prompt, so we don't necessarily show user prompt as a bubble
+  // unless we want to. The current design implies "Weaver" style where user gives instructions.
+  // We won't add user prompt as a bubble based on existing design, but we could.
+  // User input is "hidden" in the narrative flow usually, or we can add it.
+  // The existing design didn't add user prompts to the `conversation` array, only AI output. 
+  // I will stick to that to preserve the "Story Weaver" feel, but usually chat apps show both.
+  // PROMPT: "Weave a new story..." implies instructions.
+
   try {
-    // 1. Determine Chat Configuration
     const chatKey = currentSettings.chatApiKey || process.env.API_KEY;
     const chatModel = currentSettings.chatModel;
     
-    // 2. Determine Modalities based on model name heuristic
     const supportsImages = chatModel.toLowerCase().includes('image');
     const modalities = [Modality.TEXT];
     if (supportsImages) {
         modalities.push(Modality.IMAGE);
     }
 
+    console.log('[DEBUG] Initializing GoogleGenAI');
     const ai = new GoogleGenAI({ apiKey: chatKey });
     
-    // 3. Prepare config and modified prompt based on image settings
     const config: any = {
       responseModalities: modalities,
     };
 
-    // Build system/context instructions
+    // System Instructions Construction
     const systemInstructions: string[] = [];
-
-    // Writing Style
     if (currentSettings.chatWritingStyle && currentSettings.chatWritingStyle !== 'standard') {
         let styleDesc = currentSettings.chatWritingStyle;
         if(styleDesc === 'simple') styleDesc = 'simple and easy to understand (for kids)';
         systemInstructions.push(`Writing Style: ${styleDesc}.`);
     }
-
-    // Output Length
     if (currentSettings.chatOutputLength) {
         let lengthInstruction = "";
         switch(currentSettings.chatOutputLength) {
@@ -337,29 +542,44 @@ async function generateContent(prompt: string) {
         if (lengthInstruction) systemInstructions.push(lengthInstruction);
     }
 
-    // Only apply image configuration if the model supports images
     if (supportsImages) {
       if (currentSettings.imageAspectRatio) {
-         config.imageConfig = {
-             aspectRatio: currentSettings.imageAspectRatio
-         };
+         config.imageConfig = { aspectRatio: currentSettings.imageAspectRatio };
       }
-
-      // Inject style and negative prompt into the request via prompt engineering
-      
       if (currentSettings.imageStyle && currentSettings.imageStyle !== 'none') {
         systemInstructions.push(`Visual Style for Images: ${currentSettings.imageStyle.replace(/-/g, ' ')}.`);
       }
-      
       if (currentSettings.imageNegativePrompt) {
         systemInstructions.push(`Negative Prompt (avoid in images): ${currentSettings.imageNegativePrompt}.`);
       }
     }
 
-    let finalPrompt = prompt;
-    if (systemInstructions.length > 0) {
-      finalPrompt = `${prompt}\n\n[System & Generation Configuration]\n${systemInstructions.join('\n')}`;
+    // Context from previous turns? 
+    // Currently, the app sends only the *new* prompt. To make it a continuous story, we should probably 
+    // send context. However, for "generateContentStream" it's single turn.
+    // If the user wants a continuous story, we should really be using `chat` or appending previous text.
+    // For now, I will stick to the existing behavior (single prompt) but acknowledge the "Story" aspect 
+    // might need context later.
+    // Spec update: Let's prepend the last 2000 chars of the story so far to the prompt for context, 
+    // strictly as context, if it's not empty.
+    
+    let context = '';
+    const textTurns = story.conversation.filter(t => t.type === 'text');
+    if (textTurns.length > 0) {
+        const lastFew = textTurns.slice(-3).map(t => t.content).join('\n\n');
+        context = `Previous Story Context:\n${lastFew}\n\n`;
     }
+
+    let finalPrompt = prompt;
+    if (context) {
+        finalPrompt = context + "Continue the story based on the following instruction: " + prompt;
+    }
+
+    if (systemInstructions.length > 0) {
+      finalPrompt = `${finalPrompt}\n\n[System & Generation Configuration]\n${systemInstructions.join('\n')}`;
+    }
+
+    console.log(`[DEBUG] Final Prompt sent to model:`, finalPrompt);
 
     const responseStream = await ai.models.generateContentStream({
       model: chatModel,
@@ -372,23 +592,34 @@ async function generateContent(prompt: string) {
 
     for await (const chunk of responseStream) {
       const text = chunk.text;
+      
       if (text) {
         partialText += text;
         if (!currentTextTurn) {
-            // Create a new turn for this block of text
             currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
-            conversation.push(currentTextTurn);
-            renderTurn(currentTextTurn);
+            story.conversation.push(currentTextTurn);
+            // Render basic structure first
+            await renderTurn(currentTextTurn);
         }
         currentTextTurn.content = partialText;
+        
+        // Update DOM
         const turnElement = conversationContainer.querySelector(`[data-id="${currentTextTurn.id}"] .turn-content`) as HTMLElement;
         if(turnElement) {
-            turnElement.innerHTML = marked.parse(partialText) as string;
+            // Await marked parse here too
+            try {
+                const html = await marked.parse(partialText);
+                turnElement.innerHTML = html as string;
+            } catch (e) {
+                 turnElement.textContent = partialText;
+            }
         }
+        
+        // Scroll to bottom during generation
+        conversationContainer.scrollTop = conversationContainer.scrollHeight;
 
       } else if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-        // Text block is finished (or interleaved), create image turn
-        // If we were building a text turn, we leave it as is and start a new image turn
+        // Image logic
         if (currentTextTurn) {
             currentTextTurn = null; 
             partialText = '';
@@ -400,27 +631,28 @@ async function generateContent(prompt: string) {
           type: 'image',
           content: `data:image/png;base64,${base64Data}`,
         };
-        conversation.push(imageTurn);
-        renderTurn(imageTurn);
+        story.conversation.push(imageTurn);
+        await renderTurn(imageTurn);
       }
     }
+    
+    updateCurrentStory(story.conversation); // Save after generation complete
+
   } catch (e) {
-    console.error(e);
+    console.error('Generation Error:', e);
     const errorTurn: Turn = {
         id: Date.now().toString(),
         type: 'text',
-        content: `**An error occurred:**\n\n\`\`\`\n${(e as Error).message}\n\`\`\``
+        content: `**Error:** ${(e as Error).message}`
     };
-    conversation.push(errorTurn);
-    renderTurn(errorTurn);
+    story.conversation.push(errorTurn);
+    await renderTurn(errorTurn);
+    updateCurrentStory(story.conversation);
   } finally {
     setLoading(false);
   }
 }
 
-/**
- * Manages the UI loading state.
- */
 function setLoading(isLoading: boolean) {
   promptInput.disabled = isLoading;
   submitButton.disabled = isLoading;
@@ -437,63 +669,25 @@ function setLoading(isLoading: boolean) {
   }
 }
 
-// --- DATA PERSISTENCE ---
 
-function saveConversation() {
-  localStorage.setItem('storyWeaverConversation', JSON.stringify(conversation));
-  alert('Conversation saved!');
+// --- EVENT LISTENERS ---
+
+// Sidebar
+function openSidebar() {
+    librarySidebar.classList.add('open');
+    sidebarOverlay.classList.add('visible');
+}
+function closeSidebar() {
+    librarySidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('visible');
 }
 
-function loadConversation() {
-  const saved = localStorage.getItem('storyWeaverConversation');
-  if (saved) {
-    conversation = JSON.parse(saved);
-    renderConversation();
-  }
-}
+menuButton.addEventListener('click', openSidebar);
+closeSidebarBtn.addEventListener('click', closeSidebar);
+sidebarOverlay.addEventListener('click', closeSidebar);
+newStoryBtn.addEventListener('click', createNewStory);
 
-function exportConversation() {
-  if (conversation.length === 0) {
-    alert('Nothing to export!');
-    return;
-  }
-  const blob = new Blob([JSON.stringify(conversation, null, 2)], {
-    type: 'application/json',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `story-weaver-${new Date().toISOString()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function importConversation(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const result = e.target?.result as string;
-      const importedData = JSON.parse(result);
-      if (Array.isArray(importedData)) { // Basic validation
-        conversation = importedData;
-        renderConversation();
-      } else {
-        throw new Error('Invalid file format.');
-      }
-    } catch (error) {
-      alert(`Error importing file: ${(error as Error).message}`);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// --- EVENT LISTENERS & INITIALIZATION ---
-
+// Form & Settings
 promptForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const prompt = promptInput.value.trim();
@@ -503,11 +697,97 @@ promptForm.addEventListener('submit', (e) => {
   }
 });
 
-saveButton.addEventListener('click', saveConversation);
-exportButton.addEventListener('click', exportConversation);
-importButton.addEventListener('click', () => importFileInput.click());
-importFileInput.addEventListener('change', importConversation);
+saveButton.addEventListener('click', () => {
+    saveLibrary();
+    alert('Library saved to browser storage.');
+});
 
-// Load conversation and settings on startup
+exportButton.addEventListener('click', () => {
+  const data = JSON.stringify(library, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `story-weaver-library-${new Date().toISOString()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+importButton.addEventListener('click', () => importFileInput.click());
+
+importFileInput.addEventListener('change', (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const result = e.target?.result as string;
+      const importedData = JSON.parse(result);
+      if (Array.isArray(importedData)) {
+          // Check if it's a library (array of stories) or a single conversation (legacy)
+          if(importedData.length > 0 && importedData[0].conversation) {
+              // It's a library
+              library = [...library, ...importedData];
+          } else {
+              // It's likely a conversation array
+               const newStory: Story = {
+                    id: generateId(),
+                    title: 'Imported Story',
+                    conversation: importedData as Turn[],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+                library.push(newStory);
+          }
+        
+        saveLibrary();
+        renderLibraryList();
+        alert('Import successful!');
+      } else {
+        throw new Error('Invalid format.');
+      }
+    } catch (error) {
+      alert(`Error importing file: ${(error as Error).message}`);
+    }
+  };
+  reader.readAsText(file);
+});
+
+settingsButton.addEventListener('click', () => {
+  updateSettingsUI();
+  settingsDialog.showModal();
+});
+closeSettingsBtn.addEventListener('click', () => settingsDialog.close());
+cancelSettingsBtn.addEventListener('click', () => settingsDialog.close());
+settingsForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveSettingsFromUI();
+});
+helpButton.addEventListener('click', () => helpDialog.showModal());
+closeHelpBtn.addEventListener('click', () => helpDialog.close());
+closeHelpActionBtn.addEventListener('click', () => helpDialog.close());
+chatProviderSelect.addEventListener('change', () => {
+    if (chatProviderSelect.value === 'google') {
+        chatModelGroup.classList.remove('hidden');
+        chatCustomModelGroup.classList.add('hidden');
+    } else {
+        chatModelGroup.classList.add('hidden');
+        chatCustomModelGroup.classList.remove('hidden');
+    }
+});
+tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        tabButtons.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const tabId = (btn as HTMLElement).dataset.tab;
+        if(tabId) document.getElementById(tabId)?.classList.add('active');
+    });
+});
+
+// Initialization
 loadSettings();
-loadConversation();
+loadLibrary();

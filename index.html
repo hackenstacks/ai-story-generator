@@ -13,17 +13,43 @@
     </script>
   </head>
   <body>
+    <!-- Sidebar / Library -->
+    <aside id="library-sidebar">
+      <div class="sidebar-header">
+        <h2>Your Stories</h2>
+        <button id="close-sidebar-btn" class="icon-btn">&times;</button>
+      </div>
+      <button id="new-story-btn">
+        <span>+ New Story</span>
+      </button>
+      <div id="story-list">
+        <!-- Story items will be injected here -->
+      </div>
+    </aside>
+    <div id="sidebar-overlay"></div>
+
     <header>
-      <h1>Story Weaver</h1>
+      <div class="header-left">
+        <button id="menu-button" class="icon-btn" title="Open Library">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <h1>Story Weaver</h1>
+      </div>
       <div class="controls">
         <button id="settings-button" title="Configure Providers">Settings</button>
-        <button id="save-button">Save</button>
-        <button id="export-button">Export</button>
-        <button id="import-button">Import</button>
+        <button id="help-button" title="Help & Troubleshooting">Help</button>
+        <button id="save-button" title="Save to LocalStorage">Save</button>
+        <button id="export-button" title="Export JSON">Export</button>
+        <button id="import-button" title="Import JSON">Import</button>
         <input type="file" id="import-file" accept=".json" style="display: none;" />
       </div>
     </header>
-    <main id="conversation-container"></main>
+    <main id="conversation-container">
+        <div id="welcome-message">
+            <h2>Welcome to Story Weaver</h2>
+            <p>Start a new story by typing below, or select a story from the library.</p>
+        </div>
+    </main>
     <footer>
       <form id="prompt-form">
         <input
@@ -164,6 +190,38 @@
           <button type="submit" id="save-settings">Save Changes</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Help Modal -->
+    <dialog id="help-dialog">
+      <div class="settings-header">
+        <h2>Help & Support</h2>
+        <button type="button" id="close-help-btn" class="icon-btn">&times;</button>
+      </div>
+      <div class="help-content">
+        <h3>Quick Start</h3>
+        <p>Type a prompt in the input box below and hit Enter or click Generate. The AI will weave a story for you, occasionally generating images to match the narrative.</p>
+        
+        <h3>Library</h3>
+        <p>Access the library by clicking the menu icon (☰) in the top left. You can create new stories, switch between existing ones, and delete old stories.</p>
+
+        <h3>Troubleshooting: Blank Responses</h3>
+        <p>If you see a blank bubble:</p>
+        <ul>
+          <li><strong>Text Rendering:</strong> We have updated the renderer. If it persists, try refreshing the page.</li>
+          <li><strong>Check Console:</strong> Press F12 or right-click > Inspect > Console. Look for "Debug Chunk" messages.</li>
+          <li><strong>Model Selection:</strong> Some models (like Gemini 2.5 Flash Lite) might be unstable or text-only. Try switching to "Gemini 2.5 Flash" in Settings > Chat.</li>
+        </ul>
+
+        <h3>Settings Guide</h3>
+        <ul>
+          <li><strong>Chat/Story:</strong> Change the writing style (e.g., "Humorous", "Poetic") and the length of the response.</li>
+          <li><strong>Images:</strong> Customize how images look. Use "Negative Prompt" to remove unwanted elements like "blurry" or "text".</li>
+        </ul>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="close-help-action">Close</button>
+      </div>
     </dialog>
 
     <script type="module" src="index.tsx"></script>
