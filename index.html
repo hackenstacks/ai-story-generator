@@ -13,7 +13,44 @@
     </script>
   </head>
   <body>
-    <!-- Sidebar / Library -->
+    <!-- Floating Menu Toggle -->
+    <button id="main-menu-toggle" class="icon-btn fixed-toggle" title="Open Menu">
+      <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
+
+    <!-- Main Navigation Menu (Vertical Sidebar) -->
+    <nav id="main-menu">
+      <div class="nav-header">
+        <h2>Menu</h2>
+        <button id="close-menu-btn" class="icon-btn">&times;</button>
+      </div>
+      
+      <div class="nav-items">
+        <button id="library-toggle-btn">
+             <span class="icon">📚</span> Library
+        </button>
+        <div class="separator"></div>
+        <button id="settings-button">
+            <span class="icon">⚙️</span> Settings
+        </button>
+        <button id="save-button">
+            <span class="icon">💾</span> Save
+        </button>
+        <button id="export-button">
+            <span class="icon">⬇️</span> Export
+        </button>
+        <button id="import-button">
+            <span class="icon">⬆️</span> Import
+        </button>
+        <div class="separator"></div>
+        <button id="help-button">
+            <span class="icon">❓</span> Help
+        </button>
+      </div>
+      <input type="file" id="import-file" accept=".json" style="display: none;" />
+    </nav>
+
+    <!-- Library Sidebar (Secondary Sidebar) -->
     <aside id="library-sidebar">
       <div class="sidebar-header">
         <h2>Your Stories</h2>
@@ -26,30 +63,16 @@
         <!-- Story items will be injected here -->
       </div>
     </aside>
+    
     <div id="sidebar-overlay"></div>
 
-    <header>
-      <div class="header-left">
-        <button id="menu-button" class="icon-btn" title="Open Library">
-          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-        </button>
-        <h1>Story Weaver</h1>
-      </div>
-      <div class="controls">
-        <button id="settings-button" title="Configure Providers">Settings</button>
-        <button id="help-button" title="Help & Troubleshooting">Help</button>
-        <button id="save-button" title="Save to LocalStorage">Save</button>
-        <button id="export-button" title="Export JSON">Export</button>
-        <button id="import-button" title="Import JSON">Import</button>
-        <input type="file" id="import-file" accept=".json" style="display: none;" />
-      </div>
-    </header>
     <main id="conversation-container">
         <div id="welcome-message">
-            <h2>Welcome to Story Weaver</h2>
-            <p>Start a new story by typing below, or select a story from the library.</p>
+            <h2>Story Weaver</h2>
+            <p>Start a new story. I will generate a unique border for your story based on your first prompt.</p>
         </div>
     </main>
+
     <footer>
       <form id="prompt-form">
         <input
@@ -149,6 +172,12 @@
           </div>
           
           <div class="form-group">
+            <label for="image-count">Images per Generation</label>
+            <input type="number" id="image-count" min="0" max="4" value="1" />
+            <small>0 to disable automatic images. Max 4.</small>
+          </div>
+
+          <div class="form-group">
             <label for="image-aspect-ratio">Aspect Ratio</label>
             <select id="image-aspect-ratio">
               <option value="1:1">1:1 (Square)</option>
@@ -200,24 +229,13 @@
       </div>
       <div class="help-content">
         <h3>Quick Start</h3>
-        <p>Type a prompt in the input box below and hit Enter or click Generate. The AI will weave a story for you, occasionally generating images to match the narrative.</p>
+        <p>Type a prompt to begin. The AI will generate a unique border (bezel) relevant to your story's theme.</p>
         
-        <h3>Library</h3>
-        <p>Access the library by clicking the menu icon (☰) in the top left. You can create new stories, switch between existing ones, and delete old stories.</p>
+        <h3>Menu & Library</h3>
+        <p>Click the menu icon (☰) in the top left to access Settings, Save, Export, and your Library of stories.</p>
 
-        <h3>Troubleshooting: Blank Responses</h3>
-        <p>If you see a blank bubble:</p>
-        <ul>
-          <li><strong>Text Rendering:</strong> We have updated the renderer. If it persists, try refreshing the page.</li>
-          <li><strong>Check Console:</strong> Press F12 or right-click > Inspect > Console. Look for "Debug Chunk" messages.</li>
-          <li><strong>Model Selection:</strong> Some models (like Gemini 2.5 Flash Lite) might be unstable or text-only. Try switching to "Gemini 2.5 Flash" in Settings > Chat.</li>
-        </ul>
-
-        <h3>Settings Guide</h3>
-        <ul>
-          <li><strong>Chat/Story:</strong> Change the writing style (e.g., "Humorous", "Poetic") and the length of the response.</li>
-          <li><strong>Images:</strong> Customize how images look. Use "Negative Prompt" to remove unwanted elements like "blurry" or "text".</li>
-        </ul>
+        <h3>Images</h3>
+        <p>You can configure how many images the AI attempts to generate per turn in Settings > Images.</p>
       </div>
       <div class="dialog-actions">
         <button type="button" id="close-help-action">Close</button>

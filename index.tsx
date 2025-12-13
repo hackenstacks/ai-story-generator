@@ -14,16 +14,22 @@ const submitButton = document.getElementById('submit-button') as HTMLButtonEleme
 const conversationContainer = document.getElementById('conversation-container') as HTMLElement;
 const welcomeMessage = document.getElementById('welcome-message') as HTMLElement;
 
+// Main Menu Elements
+const mainMenu = document.getElementById('main-menu') as HTMLElement;
+const mainMenuToggle = document.getElementById('main-menu-toggle') as HTMLButtonElement;
+const closeMenuBtn = document.getElementById('close-menu-btn') as HTMLButtonElement;
+const sidebarOverlay = document.getElementById('sidebar-overlay') as HTMLElement;
+
+// Menu Actions
+const libraryToggleBtn = document.getElementById('library-toggle-btn') as HTMLButtonElement;
 const saveButton = document.getElementById('save-button') as HTMLButtonElement;
 const exportButton = document.getElementById('export-button') as HTMLButtonElement;
 const importButton = document.getElementById('import-button') as HTMLButtonElement;
 const importFileInput = document.getElementById('import-file') as HTMLInputElement;
 
-// Sidebar / Library Elements
-const menuButton = document.getElementById('menu-button') as HTMLButtonElement;
+// Library Sidebar Elements
 const librarySidebar = document.getElementById('library-sidebar') as HTMLElement;
 const closeSidebarBtn = document.getElementById('close-sidebar-btn') as HTMLButtonElement;
-const sidebarOverlay = document.getElementById('sidebar-overlay') as HTMLElement;
 const newStoryBtn = document.getElementById('new-story-btn') as HTMLButtonElement;
 const storyList = document.getElementById('story-list') as HTMLElement;
 
@@ -61,6 +67,7 @@ const imageAspectRatioSelect = document.getElementById('image-aspect-ratio') as 
 const imageStyleSelect = document.getElementById('image-style') as HTMLSelectElement;
 const imageNegativePromptInput = document.getElementById('image-negative-prompt') as HTMLTextAreaElement;
 const imageApiKeyInput = document.getElementById('image-api-key') as HTMLInputElement;
+const imageCountInput = document.getElementById('image-count') as HTMLInputElement;
 
 
 // --- TYPE DEFINITIONS ---
@@ -76,6 +83,7 @@ interface Story {
     conversation: Turn[];
     createdAt: number;
     updatedAt: number;
+    themeImage?: string; // Base64 image for the bezel/border
 }
 
 interface AppSettings {
@@ -90,6 +98,7 @@ interface AppSettings {
   imageAspectRatio: string;
   imageStyle: string;
   imageNegativePrompt: string;
+  imageGenerationCount: number;
 }
 
 // --- STATE ---
@@ -109,6 +118,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageAspectRatio: '1:1',
   imageStyle: 'none',
   imageNegativePrompt: '',
+  imageGenerationCount: 1,
 };
 
 let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
@@ -181,10 +191,8 @@ function createNewStory() {
     loadStory(newStory.id);
     renderLibraryList();
     
-    // Close sidebar on mobile/small screens when creating new
-    if(window.innerWidth < 768) {
-        closeSidebar();
-    }
+    // Auto-close sidebar
+    closeLibrarySidebar();
 }
 
 function loadStory(id: string) {
@@ -192,7 +200,7 @@ function loadStory(id: string) {
     if (!story) return;
 
     currentStoryId = id;
-    renderConversation(story.conversation);
+    renderConversation(story); // Pass full story to access theme
     renderLibraryList(); // To update active state
 }
 
@@ -213,9 +221,8 @@ function deleteStory(id: string, event: Event) {
     renderLibraryList();
 }
 
-function updateCurrentStory(conversation: Turn[]) {
+function updateCurrentStory(conversation: Turn[], themeImage?: string) {
     if (!currentStoryId) {
-        // Should have been created by now, but just in case
         createNewStory();
     }
     
@@ -223,23 +230,24 @@ function updateCurrentStory(conversation: Turn[]) {
     if (storyIndex !== -1) {
         library[storyIndex].conversation = conversation;
         library[storyIndex].updatedAt = Date.now();
+        if(themeImage) {
+            library[storyIndex].themeImage = themeImage;
+        }
         
-        // Auto-title if it's "New Story" and has content
+        // Auto-title if it's "New Story"
         if (library[storyIndex].title === 'New Story' && conversation.length > 0 && conversation[0].type === 'text') {
-            // Take first 30 chars of first turn
              let text = conversation[0].content.replace(/[#*`]/g, '').trim();
              if (text.length > 30) text = text.substring(0, 30) + '...';
              if (text) library[storyIndex].title = text;
         }
         
         saveLibrary();
-        renderLibraryList(); // update title/time
+        renderLibraryList();
     }
 }
 
 function renderLibraryList() {
     storyList.innerHTML = '';
-    // Sort by updated desc
     const sorted = [...library].sort((a,b) => b.updatedAt - a.updatedAt);
     
     sorted.forEach(story => {
@@ -316,6 +324,7 @@ function updateSettingsUI() {
   imageAspectRatioSelect.value = currentSettings.imageAspectRatio;
   imageStyleSelect.value = currentSettings.imageStyle;
   imageNegativePromptInput.value = currentSettings.imageNegativePrompt;
+  imageCountInput.value = currentSettings.imageGenerationCount.toString();
 }
 
 function saveSettingsFromUI() {
@@ -338,6 +347,7 @@ function saveSettingsFromUI() {
   currentSettings.imageAspectRatio = imageAspectRatioSelect.value;
   currentSettings.imageStyle = imageStyleSelect.value;
   currentSettings.imageNegativePrompt = imageNegativePromptInput.value.trim();
+  currentSettings.imageGenerationCount = parseInt(imageCountInput.value, 10) || 1;
 
   saveSettingsToStorage();
   settingsDialog.close();
@@ -349,8 +359,7 @@ function saveSettingsFromUI() {
 /**
  * Renders a single turn into the conversation container.
  */
-async function renderTurn(turn: Turn) {
-  // Check if turn already exists to avoid duplication
+async function renderTurn(turn: Turn, themeImage?: string) {
   let turnElement = conversationContainer.querySelector(`[data-id="${turn.id}"]`) as HTMLElement;
   let isNew = false;
   
@@ -359,6 +368,11 @@ async function renderTurn(turn: Turn) {
       turnElement = document.createElement('div');
       turnElement.className = 'turn';
       turnElement.dataset.id = turn.id;
+      
+      // Apply theme if available
+      if (themeImage) {
+          turnElement.style.setProperty('--story-theme', `url('${themeImage}')`);
+      }
 
       const contentElement = document.createElement('div');
       contentElement.className = 'turn-content';
@@ -366,23 +380,23 @@ async function renderTurn(turn: Turn) {
       
       turnElement.appendChild(createTurnControls(turn, turnElement));
       conversationContainer.appendChild(turnElement);
+  } else if (themeImage && !turnElement.style.getPropertyValue('--story-theme')) {
+       // Update existing turn if theme arrived late
+       turnElement.style.setProperty('--story-theme', `url('${themeImage}')`);
   }
 
   const contentElement = turnElement.querySelector('.turn-content') as HTMLElement;
 
   if (turn.type === 'text') {
-    // IMPORTANT: Await marked.parse because newer versions might be async or return a Promise.
-    // Also handle possible empty content to avoid "undefined" string.
     try {
         const rawContent = turn.content || '';
         let html = await marked.parse(rawContent);
         contentElement.innerHTML = html as string;
     } catch(e) {
         console.error('Markdown parse error:', e);
-        contentElement.textContent = turn.content; // Fallback
+        contentElement.textContent = turn.content;
     }
   } else {
-    // Clear existing content (e.g. if switching types or reloading)
     contentElement.innerHTML = '';
     const img = new Image();
     img.src = turn.content;
@@ -394,19 +408,15 @@ async function renderTurn(turn: Turn) {
   }
 }
 
-/**
- * Creates the edit and delete buttons for a turn.
- */
 function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   const controls = document.createElement('div');
   controls.className = 'turn-controls';
 
   const deleteButton = document.createElement('button');
-  deleteButton.innerHTML = '&#128465;'; // Trash can icon
+  deleteButton.innerHTML = '&#128465;'; 
   deleteButton.title = 'Delete';
   deleteButton.onclick = () => {
     turnElement.remove();
-    // Update State
     const story = library.find(s => s.id === currentStoryId);
     if(story) {
         story.conversation = story.conversation.filter((t) => t.id !== turn.id);
@@ -415,7 +425,7 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   };
 
   const editButton = document.createElement('button');
-  editButton.innerHTML = '&#9998;'; // Pencil icon
+  editButton.innerHTML = '&#9998;'; 
   editButton.title = 'Edit';
   if (turn.type === 'image') {
     editButton.disabled = true;
@@ -429,9 +439,6 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   return controls;
 }
 
-/**
- * Switches a text turn to edit mode.
- */
 function enterEditMode(turn: Turn, turnElement: HTMLElement) {
     const contentDiv = turnElement.querySelector('.turn-content') as HTMLElement;
     if (!contentDiv) return;
@@ -451,7 +458,6 @@ function enterEditMode(turn: Turn, turnElement: HTMLElement) {
         const newContent = textArea.value;
         turn.content = newContent;
         
-        // Update State
         const story = library.find(s => s.id === currentStoryId);
         if(story) {
             updateCurrentStory(story.conversation);
@@ -468,45 +474,77 @@ function enterEditMode(turn: Turn, turnElement: HTMLElement) {
 }
 
 
-/**
- * Renders the entire conversation.
- */
-async function renderConversation(conversation: Turn[]) {
+async function renderConversation(story: Story) {
   conversationContainer.innerHTML = '';
+  const conversation = story.conversation;
+  
   if (conversation.length === 0) {
       conversationContainer.appendChild(welcomeMessage);
       welcomeMessage.style.display = 'block';
   } else {
       welcomeMessage.style.display = 'none';
       for (const turn of conversation) {
-          await renderTurn(turn);
+          await renderTurn(turn, story.themeImage);
       }
   }
 }
 
 // --- API & GENERATION LOGIC ---
 
+async function generateTheme(prompt: string) {
+    try {
+        console.log('[DEBUG] Generating theme for prompt:', prompt);
+        const apiKey = currentSettings.imageApiKey || currentSettings.chatApiKey || process.env.API_KEY;
+        const ai = new GoogleGenAI({ apiKey: apiKey });
+        
+        const themePrompt = `Create a seamless, decorative, rectangular frame border texture relevant to the following story theme: "${prompt}". 
+        The image should be a frame design or a seamless texture suitable for a CSS border-image. 
+        No text. High contrast or distinct pattern preferred. Square aspect ratio.`;
+        
+        // Use gemini-2.5-flash-image for speed
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: themePrompt,
+            config: {
+                responseModalities: [Modality.IMAGE],
+                imageConfig: { aspectRatio: '1:1' }
+            }
+        });
+        
+        const imgPart = response.candidates?.[0]?.content?.parts?.[0];
+        if (imgPart && imgPart.inlineData) {
+            const base64 = `data:image/png;base64,${imgPart.inlineData.data}`;
+            return base64;
+        }
+    } catch (e) {
+        console.error('Theme generation failed', e);
+    }
+    return undefined;
+}
+
 async function generateContent(prompt: string) {
-  // Ensure we have a story to add to
   if (!currentStoryId) {
       createNewStory();
   }
   
-  // Get current conversation from library to append to
   const story = library.find(s => s.id === currentStoryId);
-  if (!story) return; // Should not happen
+  if (!story) return;
   
   welcomeMessage.style.display = 'none';
   setLoading(true);
 
-  // Optimistic UI: Add user turn immediately? 
-  // For this app, we generate based on prompt, so we don't necessarily show user prompt as a bubble
-  // unless we want to. The current design implies "Weaver" style where user gives instructions.
-  // We won't add user prompt as a bubble based on existing design, but we could.
-  // User input is "hidden" in the narrative flow usually, or we can add it.
-  // The existing design didn't add user prompts to the `conversation` array, only AI output. 
-  // I will stick to that to preserve the "Story Weaver" feel, but usually chat apps show both.
-  // PROMPT: "Weave a new story..." implies instructions.
+  // --- THEME GENERATION CHECK ---
+  // If story has no theme, trigger generation in background
+  if (!story.themeImage) {
+      generateTheme(prompt).then(theme => {
+          if (theme) {
+              story.themeImage = theme;
+              updateCurrentStory(story.conversation, theme);
+              // Re-render to apply theme to existing bubbles
+              renderConversation(story);
+          }
+      });
+  }
 
   try {
     const chatKey = currentSettings.chatApiKey || process.env.API_KEY;
@@ -514,18 +552,16 @@ async function generateContent(prompt: string) {
     
     const supportsImages = chatModel.toLowerCase().includes('image');
     const modalities = [Modality.TEXT];
-    if (supportsImages) {
+    if (supportsImages && currentSettings.imageGenerationCount > 0) {
         modalities.push(Modality.IMAGE);
     }
 
-    console.log('[DEBUG] Initializing GoogleGenAI');
     const ai = new GoogleGenAI({ apiKey: chatKey });
     
     const config: any = {
       responseModalities: modalities,
     };
 
-    // System Instructions Construction
     const systemInstructions: string[] = [];
     if (currentSettings.chatWritingStyle && currentSettings.chatWritingStyle !== 'standard') {
         let styleDesc = currentSettings.chatWritingStyle;
@@ -542,7 +578,7 @@ async function generateContent(prompt: string) {
         if (lengthInstruction) systemInstructions.push(lengthInstruction);
     }
 
-    if (supportsImages) {
+    if (supportsImages && currentSettings.imageGenerationCount > 0) {
       if (currentSettings.imageAspectRatio) {
          config.imageConfig = { aspectRatio: currentSettings.imageAspectRatio };
       }
@@ -552,17 +588,11 @@ async function generateContent(prompt: string) {
       if (currentSettings.imageNegativePrompt) {
         systemInstructions.push(`Negative Prompt (avoid in images): ${currentSettings.imageNegativePrompt}.`);
       }
+      
+      // Explicit instruction for image count
+      systemInstructions.push(`If you generate images, please try to generate exactly ${currentSettings.imageGenerationCount} image(s) that match the story events.`);
     }
 
-    // Context from previous turns? 
-    // Currently, the app sends only the *new* prompt. To make it a continuous story, we should probably 
-    // send context. However, for "generateContentStream" it's single turn.
-    // If the user wants a continuous story, we should really be using `chat` or appending previous text.
-    // For now, I will stick to the existing behavior (single prompt) but acknowledge the "Story" aspect 
-    // might need context later.
-    // Spec update: Let's prepend the last 2000 chars of the story so far to the prompt for context, 
-    // strictly as context, if it's not empty.
-    
     let context = '';
     const textTurns = story.conversation.filter(t => t.type === 'text');
     if (textTurns.length > 0) {
@@ -578,8 +608,6 @@ async function generateContent(prompt: string) {
     if (systemInstructions.length > 0) {
       finalPrompt = `${finalPrompt}\n\n[System & Generation Configuration]\n${systemInstructions.join('\n')}`;
     }
-
-    console.log(`[DEBUG] Final Prompt sent to model:`, finalPrompt);
 
     const responseStream = await ai.models.generateContentStream({
       model: chatModel,
@@ -598,15 +626,12 @@ async function generateContent(prompt: string) {
         if (!currentTextTurn) {
             currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
             story.conversation.push(currentTextTurn);
-            // Render basic structure first
-            await renderTurn(currentTextTurn);
+            await renderTurn(currentTextTurn, story.themeImage);
         }
         currentTextTurn.content = partialText;
         
-        // Update DOM
         const turnElement = conversationContainer.querySelector(`[data-id="${currentTextTurn.id}"] .turn-content`) as HTMLElement;
         if(turnElement) {
-            // Await marked parse here too
             try {
                 const html = await marked.parse(partialText);
                 turnElement.innerHTML = html as string;
@@ -615,11 +640,9 @@ async function generateContent(prompt: string) {
             }
         }
         
-        // Scroll to bottom during generation
         conversationContainer.scrollTop = conversationContainer.scrollHeight;
 
       } else if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-        // Image logic
         if (currentTextTurn) {
             currentTextTurn = null; 
             partialText = '';
@@ -632,11 +655,11 @@ async function generateContent(prompt: string) {
           content: `data:image/png;base64,${base64Data}`,
         };
         story.conversation.push(imageTurn);
-        await renderTurn(imageTurn);
+        await renderTurn(imageTurn, story.themeImage);
       }
     }
     
-    updateCurrentStory(story.conversation); // Save after generation complete
+    updateCurrentStory(story.conversation);
 
   } catch (e) {
     console.error('Generation Error:', e);
@@ -646,7 +669,7 @@ async function generateContent(prompt: string) {
         content: `**Error:** ${(e as Error).message}`
     };
     story.conversation.push(errorTurn);
-    await renderTurn(errorTurn);
+    await renderTurn(errorTurn, story.themeImage);
     updateCurrentStory(story.conversation);
   } finally {
     setLoading(false);
@@ -672,19 +695,47 @@ function setLoading(isLoading: boolean) {
 
 // --- EVENT LISTENERS ---
 
-// Sidebar
-function openSidebar() {
-    librarySidebar.classList.add('open');
-    sidebarOverlay.classList.add('visible');
+// Menu & Sidebar Navigation
+function toggleMainMenu() {
+    mainMenu.classList.toggle('open');
+    sidebarOverlay.classList.toggle('visible');
+    // Ensure secondary library sidebar is closed when main menu opens
+    if(mainMenu.classList.contains('open')) {
+        librarySidebar.classList.remove('open');
+    }
 }
-function closeSidebar() {
-    librarySidebar.classList.remove('open');
+
+function closeMainMenu() {
+    mainMenu.classList.remove('open');
     sidebarOverlay.classList.remove('visible');
 }
 
-menuButton.addEventListener('click', openSidebar);
-closeSidebarBtn.addEventListener('click', closeSidebar);
-sidebarOverlay.addEventListener('click', closeSidebar);
+function toggleLibrarySidebar() {
+    librarySidebar.classList.toggle('open');
+    // We can keep overlay visible or handle specifically.
+    // If we open library from main menu, maybe close main menu?
+    if (window.innerWidth < 768) {
+        mainMenu.classList.remove('open'); // Mobile behavior
+    }
+    sidebarOverlay.classList.add('visible');
+}
+
+function closeLibrarySidebar() {
+    librarySidebar.classList.remove('open');
+    if (!mainMenu.classList.contains('open')) {
+        sidebarOverlay.classList.remove('visible');
+    }
+}
+
+mainMenuToggle.addEventListener('click', toggleMainMenu);
+closeMenuBtn.addEventListener('click', closeMainMenu);
+sidebarOverlay.addEventListener('click', () => {
+    closeMainMenu();
+    closeLibrarySidebar();
+});
+
+libraryToggleBtn.addEventListener('click', toggleLibrarySidebar);
+closeSidebarBtn.addEventListener('click', closeLibrarySidebar);
 newStoryBtn.addEventListener('click', createNewStory);
 
 // Form & Settings
@@ -727,12 +778,9 @@ importFileInput.addEventListener('change', (event) => {
       const result = e.target?.result as string;
       const importedData = JSON.parse(result);
       if (Array.isArray(importedData)) {
-          // Check if it's a library (array of stories) or a single conversation (legacy)
           if(importedData.length > 0 && importedData[0].conversation) {
-              // It's a library
               library = [...library, ...importedData];
           } else {
-              // It's likely a conversation array
                const newStory: Story = {
                     id: generateId(),
                     title: 'Imported Story',
