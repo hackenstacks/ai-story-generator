@@ -78,6 +78,11 @@ const musicUploadInput = document.getElementById('music-upload') as HTMLInputEle
 const clearBorderBtn = document.getElementById('clear-border-btn') as HTMLButtonElement;
 const clearMusicBtn = document.getElementById('clear-music-btn') as HTMLButtonElement;
 
+// Media Player Widget Elements
+const mediaPlayPauseBtn = document.getElementById('media-play-pause') as HTMLButtonElement;
+const mediaVolumeSlider = document.getElementById('media-volume') as HTMLInputElement;
+const mediaGenerateBtn = document.getElementById('media-generate') as HTMLButtonElement;
+
 
 // --- TYPE DEFINITIONS ---
 type Turn = {
@@ -227,6 +232,61 @@ function decode(base64: string) {
   return bytes;
 }
 
+// Helper to convert Raw PCM 16-bit to WAV for standard playback
+function pcmToWav(pcmData: Uint8Array, sampleRate: number = 24000, numChannels: number = 1): string {
+    const buffer = new ArrayBuffer(44 + pcmData.length);
+    const view = new DataView(buffer);
+
+    // RIFF identifier
+    writeString(view, 0, 'RIFF');
+    // RIFF chunk length
+    view.setUint32(4, 36 + pcmData.length, true);
+    // WAVE identifier
+    writeString(view, 8, 'WAVE');
+    // fmt chunk identifier
+    writeString(view, 12, 'fmt ');
+    // fmt chunk length
+    view.setUint32(16, 16, true);
+    // Sample format (1 is PCM)
+    view.setUint16(20, 1, true);
+    // Channel count
+    view.setUint16(22, numChannels, true);
+    // Sample rate
+    view.setUint32(24, sampleRate, true);
+    // Byte rate (sampleRate * blockAlign)
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    // Block align (channel count * bytes per sample)
+    view.setUint16(32, numChannels * 2, true);
+    // Bits per sample
+    view.setUint16(34, 16, true);
+    // data chunk identifier
+    writeString(view, 36, 'data');
+    // data chunk length
+    view.setUint32(40, pcmData.length, true);
+
+    // Write PCM data
+    const pcmBytes = new Uint8Array(buffer, 44);
+    pcmBytes.set(pcmData);
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    return URL.createObjectURL(blob); // Note: For persistence we usually want Base64, but Blob URL works for immediate play.
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
+// Convert PCM Buffer to Base64 String (Wrapped in WAV)
+async function pcmToBase64Wav(pcmData: Uint8Array, sampleRate: number): Promise<string> {
+    const wavUrl = pcmToWav(pcmData, sampleRate);
+    const response = await fetch(wavUrl);
+    const blob = await response.blob();
+    return blobToBase64(blob);
+}
+
+
 // Use browser's decodeAudioData which supports many formats including mp3/wav if returned, 
 // OR handle raw PCM if specifically requested. Gemini 'audio/mp3' output is standard.
 async function playAudioBytes(base64Data: string) {
@@ -241,14 +301,32 @@ async function playAudioBytes(base64Data: string) {
 
     try {
         const arrayBuffer = decode(base64Data).buffer;
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.start(0);
+        // Try standard decode first
+        try {
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+        } catch (decodeError) {
+             // Fallback for raw PCM (assume 24kHz mono if standard decode fails)
+             // Note: AudioContext.decodeAudioData fails on raw PCM.
+             console.warn("Standard decode failed, trying raw PCM assumption (24kHz Mono)", decodeError);
+             
+             // Very simple manual PCM decode assuming 16-bit little endian, 24kHz
+             const pcmData = new Int16Array(arrayBuffer);
+             const audioBuffer = audioContext.createBuffer(1, pcmData.length, 24000);
+             const channelData = audioBuffer.getChannelData(0);
+             for(let i=0; i<pcmData.length; i++) {
+                 channelData[i] = pcmData[i] / 32768.0;
+             }
+             const source = audioContext.createBufferSource();
+             source.buffer = audioBuffer;
+             source.connect(audioContext.destination);
+             source.start(0);
+        }
     } catch (e) {
         console.error("Error decoding/playing audio:", e);
-        alert("Could not play audio. Format may not be supported.");
     }
 }
 
@@ -273,6 +351,7 @@ async function initLibrary() {
         const recent = library.sort((a,b) => b.updatedAt - a.updatedAt)[0];
         loadStory(recent.id);
     }
+    updateMediaControls();
 }
 
 
@@ -304,10 +383,18 @@ function loadStory(id: string) {
     // Handle BG Music
     if (story.bgMusic) {
         bgMusicPlayer.src = story.bgMusic;
-        bgMusicPlayer.play().catch(e => console.log('Autoplay blocked', e));
+        // Check if previously playing? For now, we auto-play if music exists, or pause.
+        // Actually, let's respect user intent slightly more. 
+        // Just load it, don't force play unless it was already playing.
+        // But for a new story load, let's auto-play to set the mood.
+        bgMusicPlayer.play().then(() => updateMediaControls()).catch(e => {
+            console.log('Autoplay blocked', e);
+            updateMediaControls();
+        });
     } else {
         bgMusicPlayer.pause();
         bgMusicPlayer.src = "";
+        updateMediaControls();
     }
 }
 
@@ -324,6 +411,7 @@ async function deleteStory(id: string, event: Event) {
         conversationContainer.appendChild(welcomeMessage); 
         welcomeMessage.style.display = 'block';
         bgMusicPlayer.pause();
+        updateMediaControls();
     }
     
     renderLibraryList();
@@ -482,7 +570,7 @@ function saveSettingsFromUI() {
           updatePromises.push(blobToBase64(musicFile).then(b64 => {
               updates.bgMusic = b64;
               bgMusicPlayer.src = b64;
-              bgMusicPlayer.play();
+              bgMusicPlayer.play().then(updateMediaControls);
           }));
       }
       
@@ -706,6 +794,64 @@ async function generateStoryThemeMetadata(prompt: string): Promise<{image?: stri
     }
 }
 
+// Generates background ambience audio using native audio model
+async function generateBackgroundAmbience() {
+    if (!currentStoryId) return;
+    const story = library.find(s => s.id === currentStoryId);
+    if (!story) return;
+
+    mediaGenerateBtn.classList.add('loading');
+    
+    // Construct context from last few turns
+    const textTurns = story.conversation.filter(t => t.type === 'text');
+    let context = "A mysterious story.";
+    if (textTurns.length > 0) {
+        context = textTurns.slice(-3).map(t => t.content).join(' ');
+    }
+    // Limit context length
+    if (context.length > 500) context = context.substring(0, 500) + "...";
+
+    try {
+        const apiKey = currentSettings.chatApiKey || process.env.API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
+
+        // Use native audio model for sound generation
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-native-audio-preview-09-2025",
+            contents: `Generate a rich, immersive ambient soundscape (no speech, just sound effects and background noise) for this scene: "${context}".`,
+            config: {
+                responseModalities: [Modality.AUDIO],
+            }
+        });
+
+        const audioPart = response.candidates?.[0]?.content?.parts?.[0];
+        if (audioPart && audioPart.inlineData) {
+             const base64Raw = audioPart.inlineData.data;
+             const rawBytes = decode(base64Raw);
+             
+             // Convert Raw PCM to WAV for <audio> playback compatibility
+             // Assuming 24kHz mono based on model defaults
+             const wavBase64 = await pcmToBase64Wav(rawBytes, 24000);
+             
+             // Update story
+             story.bgMusic = wavBase64;
+             await updateCurrentStory(story.conversation, { bgMusic: wavBase64 });
+             
+             // Play
+             bgMusicPlayer.src = wavBase64;
+             bgMusicPlayer.play().then(updateMediaControls);
+        } else {
+            alert("Failed to generate audio.");
+        }
+
+    } catch (e) {
+        console.error("Ambience Generation Error:", e);
+        alert("Ambience generation failed. " + (e as Error).message);
+    } finally {
+        mediaGenerateBtn.classList.remove('loading');
+    }
+}
+
 
 async function speakText(text: string) {
     if (!text) return;
@@ -917,6 +1063,39 @@ function setLoading(isLoading: boolean) {
 }
 
 
+// --- MEDIA WIDGET LOGIC ---
+
+function updateMediaControls() {
+    if (bgMusicPlayer.paused) {
+        mediaPlayPauseBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    } else {
+        mediaPlayPauseBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+    }
+    mediaVolumeSlider.value = bgMusicPlayer.volume.toString();
+}
+
+bgMusicPlayer.addEventListener('play', updateMediaControls);
+bgMusicPlayer.addEventListener('pause', updateMediaControls);
+bgMusicPlayer.addEventListener('volumechange', updateMediaControls);
+
+mediaPlayPauseBtn.addEventListener('click', () => {
+    if(bgMusicPlayer.src) {
+        if(bgMusicPlayer.paused) bgMusicPlayer.play();
+        else bgMusicPlayer.pause();
+    } else {
+        // No source, maybe prompt to generate?
+        mediaGenerateBtn.classList.add('pulse');
+        setTimeout(() => mediaGenerateBtn.classList.remove('pulse'), 1000);
+    }
+});
+
+mediaVolumeSlider.addEventListener('input', (e) => {
+    bgMusicPlayer.volume = parseFloat((e.target as HTMLInputElement).value);
+});
+
+mediaGenerateBtn.addEventListener('click', generateBackgroundAmbience);
+
+
 // --- EVENT LISTENERS ---
 
 // Menu & Sidebar Navigation
@@ -1085,6 +1264,7 @@ clearMusicBtn.addEventListener('click', () => {
             updateCurrentStory(story.conversation, { bgMusic: undefined });
         }
     }
+    updateMediaControls();
 });
 
 // Initialization

@@ -26,6 +26,23 @@
       <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
     </button>
 
+    <!-- Floating Media Player Widget -->
+    <div id="media-player-widget">
+        <div class="media-info">
+            <span class="icon">🎵</span>
+            <span id="media-status">Ambience</span>
+        </div>
+        <div class="media-controls">
+            <button id="media-play-pause" title="Play/Pause">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <input type="range" id="media-volume" min="0" max="1" step="0.1" value="0.5" title="Volume">
+            <button id="media-generate" title="Generate AI Soundscape">
+                <span class="magic-wand">✨</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Main Navigation Menu (Vertical Sidebar) -->
     <nav id="main-menu">
       <div class="nav-header">
@@ -284,6 +301,9 @@
         <h3>Audio & TTS</h3>
         <p>Click the speaker icon 🔊 on any text bubble to read it aloud using realistic AI voices. You can change the voice in Settings > Audio.</p>
         <p>You can also upload your own background music in Settings > Audio.</p>
+
+        <h3>Media Controls & AI Ambience</h3>
+        <p>Use the floating media player (top right) to control background audio. Click the ✨ button to let Gemini generate a soundscape based on your current story scene.</p>
 
         <h3>Customization</h3>
         <p>Don't like the auto-generated border or font? You can upload your own image border or pick a specific font in the settings.</p>
