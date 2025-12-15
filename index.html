@@ -36,7 +36,16 @@
             <button id="media-play-pause" title="Play/Pause">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             </button>
-            <input type="range" id="media-volume" min="0" max="1" step="0.1" value="0.5" title="Volume">
+            <div class="volume-container" title="Volume">
+                 <input type="range" id="media-volume" min="0" max="1" step="0.1" value="0.5">
+            </div>
+            <select id="media-speed" title="Playback Speed">
+                <option value="0.5">0.5x</option>
+                <option value="1.0" selected>1.0x</option>
+                <option value="1.25">1.2x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2.0">2.0x</option>
+            </select>
             <button id="media-generate" title="Generate AI Soundscape">
                 <span class="magic-wand">✨</span>
             </button>
@@ -78,14 +87,34 @@
     <!-- Library Sidebar (Secondary Sidebar) -->
     <aside id="library-sidebar">
       <div class="sidebar-header">
-        <h2>Your Stories</h2>
+        <h2>Library</h2>
         <button id="close-sidebar-btn" class="icon-btn">&times;</button>
       </div>
-      <button id="new-story-btn">
-        <span>+ New Story</span>
-      </button>
-      <div id="story-list">
-        <!-- Story items will be injected here -->
+      
+      <div class="library-tabs">
+          <button class="lib-tab active" data-target="story-list-container">Stories</button>
+          <button class="lib-tab" data-target="assets-list-container">Assets</button>
+      </div>
+
+      <div id="story-list-container" class="lib-content active">
+          <button id="new-story-btn">
+            <span>+ New Story</span>
+          </button>
+          <div id="story-list">
+            <!-- Story items will be injected here -->
+          </div>
+      </div>
+
+      <div id="assets-list-container" class="lib-content">
+          <div class="assets-actions">
+              <label for="asset-upload" class="upload-btn">
+                  <span>+ Upload Asset</span>
+                  <input type="file" id="asset-upload" accept="image/*,audio/*" style="display: none;">
+              </label>
+          </div>
+          <div id="assets-list">
+              <!-- Asset items will be injected here -->
+          </div>
       </div>
     </aside>
     
@@ -114,6 +143,28 @@
         </button>
       </form>
     </footer>
+
+    <!-- Regenerate Modal -->
+    <dialog id="regenerate-dialog">
+        <form method="dialog">
+            <div class="settings-header">
+                <h2>Regenerate Content</h2>
+                <button type="button" id="close-regen-btn" class="icon-btn">&times;</button>
+            </div>
+            <div style="padding: 1.5rem;">
+                <p style="margin-bottom: 1rem; color: #ccc;">How would you like to change this part?</p>
+                <div class="form-group">
+                    <label for="regen-prompt">Steering Prompt (Optional)</label>
+                    <input type="text" id="regen-prompt" placeholder="e.g. 'Make it more dramatic', 'Use blue colors'..." />
+                    <small>Leave empty to let the AI decide the variation.</small>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="cancel-regen-btn">Cancel</button>
+                <button type="submit" id="confirm-regen-btn">Regenerate</button>
+            </div>
+        </form>
+    </dialog>
 
     <!-- Settings Modal -->
     <dialog id="settings-dialog">
@@ -300,13 +351,16 @@
         
         <h3>Audio & TTS</h3>
         <p>Click the speaker icon 🔊 on any text bubble to read it aloud using realistic AI voices. You can change the voice in Settings > Audio.</p>
-        <p>You can also upload your own background music in Settings > Audio.</p>
+        <p>You can also upload your own background music in Settings > Audio or the Assets Library.</p>
 
         <h3>Media Controls & AI Ambience</h3>
-        <p>Use the floating media player (top right) to control background audio. Click the ✨ button to let Gemini generate a soundscape based on your current story scene.</p>
+        <p>Use the floating media player (top right) to control background audio volume and speed. Click the ✨ button to let Gemini generate a soundscape based on your current story scene.</p>
 
-        <h3>Customization</h3>
-        <p>Don't like the auto-generated border or font? You can upload your own image border or pick a specific font in the settings.</p>
+        <h3>Assets Library</h3>
+        <p>Open the Library sidebar and switch to the "Assets" tab. Here you can upload images and audio files. Click on an asset to immediately apply it to your current story.</p>
+
+        <h3>Regeneration</h3>
+        <p>Don't like a response? Click the 🔄 button next to any message. You can enter a "Steering Prompt" to guide the AI (e.g., "Make it funnier") or just let it try again automatically.</p>
       </div>
       <div class="dialog-actions">
         <button type="button" id="close-help-action">Close</button>

@@ -33,7 +33,10 @@ const librarySidebar = document.getElementById('library-sidebar') as HTMLElement
 const closeSidebarBtn = document.getElementById('close-sidebar-btn') as HTMLButtonElement;
 const newStoryBtn = document.getElementById('new-story-btn') as HTMLButtonElement;
 const storyList = document.getElementById('story-list') as HTMLElement;
-
+const assetsList = document.getElementById('assets-list') as HTMLElement;
+const libTabs = document.querySelectorAll('.lib-tab');
+const libContents = document.querySelectorAll('.lib-content');
+const assetUploadInput = document.getElementById('asset-upload') as HTMLInputElement;
 
 // Settings Elements
 const settingsButton = document.getElementById('settings-button') as HTMLButtonElement;
@@ -43,6 +46,14 @@ const closeSettingsBtn = document.getElementById('close-settings-btn') as HTMLBu
 const cancelSettingsBtn = document.getElementById('cancel-settings') as HTMLButtonElement;
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
+
+// Regenerate Dialog Elements
+const regenerateDialog = document.getElementById('regenerate-dialog') as HTMLDialogElement;
+const regenPromptInput = document.getElementById('regen-prompt') as HTMLInputElement;
+const confirmRegenBtn = document.getElementById('confirm-regen-btn') as HTMLButtonElement;
+const cancelRegenBtn = document.getElementById('cancel-regen-btn') as HTMLButtonElement;
+const closeRegenBtn = document.getElementById('close-regen-btn') as HTMLButtonElement;
+
 
 // Help Elements
 const helpButton = document.getElementById('help-button') as HTMLButtonElement;
@@ -81,6 +92,7 @@ const clearMusicBtn = document.getElementById('clear-music-btn') as HTMLButtonEl
 // Media Player Widget Elements
 const mediaPlayPauseBtn = document.getElementById('media-play-pause') as HTMLButtonElement;
 const mediaVolumeSlider = document.getElementById('media-volume') as HTMLInputElement;
+const mediaSpeedSelect = document.getElementById('media-speed') as HTMLSelectElement;
 const mediaGenerateBtn = document.getElementById('media-generate') as HTMLButtonElement;
 
 
@@ -100,6 +112,14 @@ interface Story {
     themeImage?: string; // Base64 image for the bezel/border
     fontFamily?: string; 
     bgMusic?: string; // Base64 audio data URI
+}
+
+interface Asset {
+    id: string;
+    type: 'image' | 'audio';
+    name: string;
+    data: string; // Base64
+    createdAt: number;
 }
 
 interface AppSettings {
@@ -122,8 +142,13 @@ interface AppSettings {
 
 // --- STATE ---
 let library: Story[] = [];
+let assets: Asset[] = [];
 let currentStoryId: string | null = null;
 let audioContext: AudioContext | null = null;
+
+// Regenerate state
+let turnToRegenerate: Turn | null = null;
+let turnElementToRegenerate: HTMLElement | null = null;
 
 const DEFAULT_SETTINGS: AppSettings = {
   chatProvider: 'google',
@@ -146,8 +171,9 @@ let currentSettings: AppSettings = { ...DEFAULT_SETTINGS };
 
 // --- INDEXED DB HELPER ---
 const DB_NAME = 'StoryWeaverDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped version for Assets store
 const STORE_STORIES = 'stories';
+const STORE_ASSETS = 'assets';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -159,10 +185,14 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_STORIES)) {
         db.createObjectStore(STORE_STORIES, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORE_ASSETS)) {
+        db.createObjectStore(STORE_ASSETS, { keyPath: 'id' });
+      }
     };
   });
 }
 
+// -- STORIES DB OPS --
 async function getAllStoriesFromDB(): Promise<Story[]> {
     try {
         const db = await openDB();
@@ -209,6 +239,55 @@ async function deleteStoryFromDB(id: string): Promise<void> {
         console.error("DB Error deleting story:", e);
     }
 }
+
+// -- ASSETS DB OPS --
+async function getAllAssetsFromDB(): Promise<Asset[]> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_ASSETS, 'readonly');
+            const store = tx.objectStore(STORE_ASSETS);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error getting assets:", e);
+        return [];
+    }
+}
+
+async function saveAssetToDB(asset: Asset): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_ASSETS, 'readwrite');
+            const store = tx.objectStore(STORE_ASSETS);
+            const request = store.put(asset);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error saving asset:", e);
+        alert("Failed to save asset. Storage might be full.");
+    }
+}
+
+async function deleteAssetFromDB(id: string): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_ASSETS, 'readwrite');
+            const store = tx.objectStore(STORE_ASSETS);
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("DB Error deleting asset:", e);
+    }
+}
+
 
 // --- AUDIO HELPERS ---
 
@@ -344,7 +423,9 @@ function formatDate(timestamp: number): string {
 
 async function initLibrary() {
     library = await getAllStoriesFromDB();
+    assets = await getAllAssetsFromDB();
     renderLibraryList();
+    renderAssetsList();
     
     if (library.length > 0 && !currentStoryId) {
         // Load most recent story
@@ -383,6 +464,7 @@ function loadStory(id: string) {
     // Handle BG Music
     if (story.bgMusic) {
         bgMusicPlayer.src = story.bgMusic;
+        bgMusicPlayer.playbackRate = parseFloat(mediaSpeedSelect.value) || 1.0;
         // Check if previously playing? For now, we auto-play if music exists, or pause.
         // Actually, let's respect user intent slightly more. 
         // Just load it, don't force play unless it was already playing.
@@ -475,6 +557,102 @@ function renderLibraryList() {
         item.appendChild(info);
         item.appendChild(delBtn);
         storyList.appendChild(item);
+    });
+}
+
+// -- ASSET LIBRARY LOGIC --
+async function handleAssetUpload(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const base64 = await blobToBase64(file);
+    const type = file.type.startsWith('image') ? 'image' : 'audio';
+    
+    const newAsset: Asset = {
+        id: generateId(),
+        type: type,
+        name: file.name,
+        data: base64,
+        createdAt: Date.now()
+    };
+
+    await saveAssetToDB(newAsset);
+    assets.unshift(newAsset);
+    renderAssetsList();
+    
+    // Clear input so same file can be selected again
+    (e.target as HTMLInputElement).value = '';
+}
+
+async function deleteAsset(id: string, e: Event) {
+    e.stopPropagation();
+    if (!confirm("Delete this asset from library?")) return;
+    await deleteAssetFromDB(id);
+    assets = assets.filter(a => a.id !== id);
+    renderAssetsList();
+}
+
+async function applyAssetToStory(asset: Asset) {
+    if (!currentStoryId) return alert("Select or create a story first.");
+    const story = library.find(s => s.id === currentStoryId);
+    if (!story) return;
+
+    if (asset.type === 'image') {
+        await updateCurrentStory(story.conversation, { themeImage: asset.data });
+        // Re-render to see changes
+        loadStory(story.id);
+    } else {
+        await updateCurrentStory(story.conversation, { bgMusic: asset.data });
+        bgMusicPlayer.src = asset.data;
+        bgMusicPlayer.play().then(updateMediaControls);
+    }
+}
+
+function renderAssetsList() {
+    assetsList.innerHTML = '';
+    const sorted = [...assets].sort((a,b) => b.createdAt - a.createdAt);
+
+    sorted.forEach(asset => {
+        const item = document.createElement('div');
+        item.className = 'asset-item';
+        item.onclick = () => applyAssetToStory(asset);
+
+        // Icon/Preview
+        if (asset.type === 'image') {
+            const img = document.createElement('img');
+            img.src = asset.data;
+            img.className = 'asset-preview-img';
+            item.appendChild(img);
+        } else {
+            const icon = document.createElement('div');
+            icon.className = 'asset-icon';
+            icon.textContent = '🎵';
+            item.appendChild(icon);
+        }
+
+        const info = document.createElement('div');
+        info.className = 'asset-info';
+        
+        const name = document.createElement('span');
+        name.className = 'asset-name';
+        name.textContent = asset.name;
+        
+        const typeLabel = document.createElement('div');
+        typeLabel.className = 'asset-type';
+        typeLabel.textContent = asset.type === 'image' ? 'Image Border' : 'Audio Track';
+        
+        info.appendChild(name);
+        info.appendChild(typeLabel);
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-asset-btn';
+        delBtn.innerHTML = '&times;';
+        delBtn.title = 'Delete Asset';
+        delBtn.onclick = (e) => deleteAsset(asset.id, e);
+        
+        item.appendChild(info);
+        item.appendChild(delBtn);
+        assetsList.appendChild(item);
     });
 }
 
@@ -674,6 +852,17 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
     enterEditMode(turn, turnElement);
   };
 
+  const regenButton = document.createElement('button');
+  regenButton.innerHTML = '&#128257;'; // Loop/Refresh icon
+  regenButton.title = 'Regenerate';
+  regenButton.onclick = () => {
+      turnToRegenerate = turn;
+      turnElementToRegenerate = turnElement;
+      regenPromptInput.value = '';
+      regenerateDialog.showModal();
+  };
+
+
   const deleteButton = document.createElement('button');
   deleteButton.innerHTML = '&#128465;'; 
   deleteButton.title = 'Delete';
@@ -687,6 +876,7 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   };
 
   controls.appendChild(editButton);
+  controls.appendChild(regenButton);
   controls.appendChild(deleteButton);
   return controls;
 }
@@ -743,6 +933,100 @@ async function renderConversation(story: Story) {
       }
   }
 }
+
+// --- REGENERATION LOGIC ---
+
+async function performRegeneration(turn: Turn, element: HTMLElement, steeringPrompt: string) {
+    const story = library.find(s => s.id === currentStoryId);
+    if (!story) return;
+
+    const turnIndex = story.conversation.findIndex(t => t.id === turn.id);
+    if (turnIndex === -1) return;
+
+    // Get context up to this turn
+    const previousContextTurns = story.conversation.slice(0, turnIndex).filter(t => t.type === 'text');
+    let context = '';
+    if (previousContextTurns.length > 0) {
+        context = previousContextTurns.slice(-5).map(t => t.content).join('\n\n');
+    }
+
+    const contentDiv = element.querySelector('.turn-content') as HTMLElement;
+    contentDiv.innerHTML = '<div class="spinner"></div>';
+    
+    try {
+        const chatKey = currentSettings.chatApiKey || process.env.API_KEY;
+        const ai = new GoogleGenAI({ apiKey: chatKey });
+
+        if (turn.type === 'text') {
+            const model = currentSettings.chatModel;
+            let prompt = `Original Context:\n${context}\n\nTask: Regenerate the next response in the story.`;
+            if (steeringPrompt) {
+                prompt += `\nAdditional Instruction: ${steeringPrompt}`;
+            } else {
+                prompt += `\nInstruction: Write a different variation of the scene.`;
+            }
+
+            const result = await ai.models.generateContent({
+                model: model,
+                contents: prompt
+            });
+
+            if (result.text) {
+                turn.content = result.text;
+                contentDiv.innerHTML = await marked.parse(result.text) as string;
+            }
+
+        } else if (turn.type === 'image') {
+             const model = currentSettings.imageModel;
+             let prompt = steeringPrompt;
+             
+             // If no steering prompt, try to infer from last text turn
+             if (!prompt) {
+                 const lastText = previousContextTurns.length > 0 ? previousContextTurns[previousContextTurns.length - 1].content : "A fantasy scene";
+                 // Shorten context for image prompt
+                 prompt = lastText.length > 200 ? lastText.substring(0, 200) : lastText;
+             }
+
+             // Generate Image
+             const result = await ai.models.generateContent({
+                model: model,
+                contents: prompt,
+                config: {
+                    responseModalities: [Modality.IMAGE],
+                    imageConfig: { aspectRatio: currentSettings.imageAspectRatio as any }
+                }
+             });
+
+             const imgPart = result.candidates?.[0]?.content?.parts?.[0];
+             if (imgPart && imgPart.inlineData) {
+                 const base64 = `data:image/png;base64,${imgPart.inlineData.data}`;
+                 turn.content = base64;
+                 contentDiv.innerHTML = '';
+                 const img = new Image();
+                 img.src = base64;
+                 contentDiv.appendChild(img);
+             } else {
+                 throw new Error("No image generated.");
+             }
+        }
+        
+        await updateCurrentStory(story.conversation);
+
+    } catch (e) {
+        console.error("Regeneration failed", e);
+        alert("Regeneration failed: " + (e as Error).message);
+        // Restore old content
+        if (turn.type === 'text') {
+            contentDiv.innerHTML = await marked.parse(turn.content) as string;
+        } else {
+            contentDiv.innerHTML = '';
+            const img = new Image();
+            img.src = turn.content;
+            contentDiv.appendChild(img);
+        }
+    }
+}
+
 
 // --- API & GENERATION LOGIC ---
 
@@ -1098,6 +1382,10 @@ mediaVolumeSlider.addEventListener('input', (e) => {
     bgMusicPlayer.volume = parseFloat((e.target as HTMLInputElement).value);
 });
 
+mediaSpeedSelect.addEventListener('change', () => {
+    bgMusicPlayer.playbackRate = parseFloat(mediaSpeedSelect.value);
+});
+
 mediaGenerateBtn.addEventListener('click', generateBackgroundAmbience);
 
 
@@ -1142,6 +1430,19 @@ sidebarOverlay.addEventListener('click', () => {
 libraryToggleBtn.addEventListener('click', toggleLibrarySidebar);
 closeSidebarBtn.addEventListener('click', closeLibrarySidebar);
 newStoryBtn.addEventListener('click', createNewStory);
+
+libTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        libTabs.forEach(t => t.classList.remove('active'));
+        libContents.forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        const targetId = (tab as HTMLElement).dataset.target;
+        if(targetId) document.getElementById(targetId)?.classList.add('active');
+    });
+});
+
+assetUploadInput.addEventListener('change', handleAssetUpload);
+
 
 // Form & Settings
 promptForm.addEventListener('submit', (e) => {
@@ -1271,6 +1572,18 @@ clearMusicBtn.addEventListener('click', () => {
     }
     updateMediaControls();
 });
+
+// Regenerate Events
+closeRegenBtn.addEventListener('click', () => regenerateDialog.close());
+cancelRegenBtn.addEventListener('click', () => regenerateDialog.close());
+confirmRegenBtn.addEventListener('click', () => {
+    if (turnToRegenerate && turnElementToRegenerate) {
+        const prompt = regenPromptInput.value.trim();
+        regenerateDialog.close();
+        performRegeneration(turnToRegenerate, turnElementToRegenerate, prompt);
+    }
+});
+
 
 // Initialization
 loadSettings();
