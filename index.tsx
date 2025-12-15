@@ -815,12 +815,17 @@ async function generateBackgroundAmbience() {
         const apiKey = currentSettings.chatApiKey || process.env.API_KEY;
         const ai = new GoogleGenAI({ apiKey });
 
-        // Use native audio model for sound generation
+        // Switched to TTS model as native-audio is likely Live API only or not supported for generateContent in this context
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-native-audio-preview-09-2025",
-            contents: `Generate a rich, immersive ambient soundscape (no speech, just sound effects and background noise) for this scene: "${context}".`,
+            model: "gemini-2.5-flash-preview-tts",
+            contents: `Narrate the ambient atmosphere and sounds for this scene in a low, immersive voice: "${context}".`,
             config: {
                 responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName: 'Fenrir' },
+                    },
+                },
             }
         });
 
