@@ -34,11 +34,17 @@
                 <span id="media-status">Ambience</span>
             </div>
             <div class="media-main-controls">
+                <button id="narrator-toggle" title="Toggle Auto-Narration (TTS)">
+                    <span class="icon">🔇</span>
+                </button>
                 <button id="media-play-pause" title="Play/Pause Background">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
-                 <button id="media-generate" title="Generate AI Soundscape">
+                 <button id="media-generate" title="Auto-Generate Ambience from Story">
                     <span class="magic-wand">✨</span>
+                </button>
+                <button id="media-mixer" title="Custom Sound Mixer">
+                    <span class="icon">🎛️</span>
                 </button>
             </div>
         </div>
@@ -157,7 +163,7 @@
     <dialog id="sound-gen-dialog">
         <form method="dialog">
             <div class="settings-header">
-                <h2>Generate AI Soundscape</h2>
+                <h2>Custom Sound Mixer</h2>
                 <button type="button" id="close-sound-gen-btn" class="icon-btn">&times;</button>
             </div>
             <div class="dialog-content">
@@ -386,14 +392,15 @@
       </div>
       <div class="help-content">
         <h3>Quick Start</h3>
-        <p>Type a prompt to begin. The AI will generate a unique border and pick a font relevant to your story's theme.</p>
+        <p>Type a prompt to begin. If you leave the prompt empty and click <strong>Generate</strong>, the AI will automatically write the next part of the story.</p>
         
         <h3>Audio & TTS</h3>
-        <p>Click the speaker icon 🔊 on any text bubble to read it aloud using realistic AI voices. You can change the voice in Settings > Audio.</p>
-        <p>You can also upload your own background music in Settings > Audio or the Assets Library.</p>
+        <p><strong>Narrator Mode:</strong> Click the speaker icon 🔇 in the top right media widget to toggle Auto-Narration. When enabled (🗣️), the AI will read new story parts aloud automatically.</p>
+        <p>You can adjust the Narrator Volume and Background Volume independently in the media widget.</p>
 
-        <h3>Media Controls & AI Ambience</h3>
-        <p>Use the floating media player (top right) to control background audio volume and narration volume independently. Click the ✨ button to create a custom soundscape using your library assets.</p>
+        <h3>AI Ambience</h3>
+        <p><strong>Magic Wand (✨):</strong> Click this to instantly generate background sound/music compatible with the current story scene.</p>
+        <p><strong>Mixer (🎛️):</strong> Click this to open the custom sound mixer where you can select specific audio files from your library and guide the AI with a prompt.</p>
 
         <h3>Assets Library</h3>
         <p>Open the Library sidebar and switch to the "Assets" tab. Here you can upload images, audio, and video clips.</p>
@@ -402,9 +409,6 @@
             <li><strong>Image:</strong> Click to set as story border theme.</li>
             <li><strong>Video:</strong> Click to insert into the story conversation.</li>
         </ul>
-
-        <h3>Regeneration</h3>
-        <p>Don't like a response? Click the 🔄 button next to any message. You can enter a "Steering Prompt" to guide the AI (e.g., "Make it funnier") or just let it try again automatically.</p>
       </div>
       <div class="dialog-actions">
         <button type="button" id="close-help-action">Close</button>

@@ -138,7 +138,7 @@ h1 {
     gap: 0.5rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     transition: all 0.3s ease;
-    width: 220px;
+    width: 260px; /* Widened to fit new buttons */
 }
 
 #media-player-widget:hover {
@@ -161,7 +161,7 @@ h1 {
     color: #fff;
     white-space: nowrap;
     overflow: hidden;
-    max-width: 120px;
+    max-width: 100px;
 }
 
 .media-main-controls {
@@ -169,7 +169,7 @@ h1 {
     gap: 0.25rem;
 }
 
-#media-play-pause, #media-generate {
+#media-play-pause, #media-generate, #media-mixer, #narrator-toggle {
     background: rgba(255,255,255,0.1);
     border: none;
     color: #fff;
@@ -184,7 +184,12 @@ h1 {
     transition: background-color 0.2s;
 }
 
-#media-play-pause:hover, #media-generate:hover {
+#media-play-pause:hover, #media-generate:hover, #media-mixer:hover, #narrator-toggle:hover {
+    background-color: var(--primary-color);
+    color: #000;
+}
+
+#narrator-toggle.active {
     background-color: var(--primary-color);
     color: #000;
 }

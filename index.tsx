@@ -102,6 +102,8 @@ const bgVolumeSlider = document.getElementById('bg-volume') as HTMLInputElement;
 const narratorVolumeSlider = document.getElementById('narrator-volume') as HTMLInputElement;
 const mediaSpeedSelect = document.getElementById('media-speed') as HTMLSelectElement;
 const mediaGenerateBtn = document.getElementById('media-generate') as HTMLButtonElement;
+const mediaMixerBtn = document.getElementById('media-mixer') as HTMLButtonElement;
+const narratorToggleBtn = document.getElementById('narrator-toggle') as HTMLButtonElement;
 
 
 // --- TYPE DEFINITIONS ---
@@ -156,6 +158,7 @@ let currentStoryId: string | null = null;
 let audioContext: AudioContext | null = null;
 let narrationGainNode: GainNode | null = null;
 let currentNarrationVolume = 1.0;
+let isNarratorEnabled = false;
 
 // Regenerate state
 let turnToRegenerate: Turn | null = null;
@@ -1145,7 +1148,65 @@ async function generateStoryThemeMetadata(prompt: string): Promise<{image?: stri
     }
 }
 
-// Generates background ambience using inputs if provided
+// Generates background ambience using context (Automatic mode)
+async function generateContextualAmbience() {
+     if (!currentStoryId) return;
+    const story = library.find(s => s.id === currentStoryId);
+    if (!story) return;
+
+    mediaGenerateBtn.classList.add('loading');
+    
+    // Construct context from last few turns
+    const textTurns = story.conversation.filter(t => t.type === 'text');
+    let context = "A mysterious story.";
+    if (textTurns.length > 0) {
+        context = textTurns.slice(-3).map(t => t.content).join(' ');
+    }
+    if (context.length > 500) context = context.substring(0, 500) + "...";
+
+    try {
+        const apiKey = currentSettings.chatApiKey || process.env.API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
+
+        // Use TTS model with "Fenrir" for deep atmospheric narration/sound description
+        // This is a creative use of TTS to generate "Ambience"
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: `Narrate the ambient atmosphere and sounds for this scene in a low, immersive voice: "${context}".`,
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName: 'Fenrir' },
+                    },
+                },
+            }
+        });
+
+        const audioPart = response.candidates?.[0]?.content?.parts?.[0];
+        if (audioPart && audioPart.inlineData) {
+             const base64Raw = audioPart.inlineData.data;
+             const rawBytes = decode(base64Raw);
+             const wavBase64 = await pcmToBase64Wav(rawBytes, 24000);
+             
+             story.bgMusic = wavBase64;
+             await updateCurrentStory(story.conversation, { bgMusic: wavBase64 });
+             
+             bgMusicPlayer.src = wavBase64;
+             bgMusicPlayer.play().then(updateMediaControls);
+        } else {
+            alert("Failed to generate audio.");
+        }
+
+    } catch (e) {
+        console.error("Ambience Generation Error:", e);
+        alert("Ambience generation failed. " + (e as Error).message);
+    } finally {
+        mediaGenerateBtn.classList.remove('loading');
+    }
+}
+
+// Generates background ambience using inputs (Manual/Mixer mode)
 async function generateGuidedAmbience() {
     // 1. Collect selected assets
     const checkedBoxes = audioAssetSelectionList.querySelectorAll('input[type="checkbox"]:checked');
@@ -1163,7 +1224,7 @@ async function generateGuidedAmbience() {
 
     // 3. Close dialog and start loading UI
     soundGenDialog.close();
-    mediaGenerateBtn.classList.add('loading');
+    mediaMixerBtn.classList.add('pulse'); // Visual feedback on mixer btn
 
     // 4. API Call
     try {
@@ -1175,7 +1236,6 @@ async function generateGuidedAmbience() {
         // Add Audio Parts
         for(const asset of selectedAssets) {
              // asset.data is "data:audio/mp3;base64,....."
-             // Split to get just base64
              const base64Data = asset.data.split(',')[1];
              parts.push({
                  inlineData: {
@@ -1223,7 +1283,7 @@ async function generateGuidedAmbience() {
         console.error("Sound Gen Error", e);
         alert("Failed to generate soundscape: " + (e as Error).message);
     } finally {
-        mediaGenerateBtn.classList.remove('loading');
+        mediaMixerBtn.classList.remove('pulse');
     }
 }
 
@@ -1280,7 +1340,7 @@ async function speakText(text: string) {
 
     } catch(e) {
         console.error("TTS Error:", e);
-        alert("Text-to-Speech generation failed. Check API key/Quota.");
+        // Silent fail for auto-narration to avoid spamming alerts, log only
     }
 }
 
@@ -1382,6 +1442,7 @@ async function generateContent(prompt: string) {
 
     let partialText = '';
     let currentTextTurn: Turn | null = null;
+    let fullTextAccumulated = '';
 
     // Use font override if present, else story font
     const fontToUse = currentSettings.manualFont || story.fontFamily;
@@ -1393,6 +1454,8 @@ async function generateContent(prompt: string) {
           if (part.text) {
               const text = part.text;
               partialText += text;
+              fullTextAccumulated += text;
+
               if (!currentTextTurn) {
                   currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
                   story.conversation.push(currentTextTurn);
@@ -1431,6 +1494,13 @@ async function generateContent(prompt: string) {
     }
     
     await updateCurrentStory(story.conversation);
+    
+    // Auto-Narrate if enabled
+    if (isNarratorEnabled && fullTextAccumulated) {
+        // Strip markdown chars before speaking
+        const speakableText = fullTextAccumulated.replace(/[#*`]/g, '');
+        speakText(speakableText);
+    }
 
   } catch (e) {
     console.error('Generation Error:', e);
@@ -1472,6 +1542,18 @@ function updateMediaControls() {
     } else {
         mediaPlayPauseBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
     }
+    
+    // Update Narrator Toggle Icon
+    if (isNarratorEnabled) {
+        narratorToggleBtn.innerHTML = '<span class="icon">🗣️</span>';
+        narratorToggleBtn.classList.add('active');
+        narratorToggleBtn.title = 'Disable Auto-Narration';
+    } else {
+        narratorToggleBtn.innerHTML = '<span class="icon">🔇</span>';
+        narratorToggleBtn.classList.remove('active');
+        narratorToggleBtn.title = 'Enable Auto-Narration';
+    }
+
     bgVolumeSlider.value = bgMusicPlayer.volume.toString();
     narratorVolumeSlider.value = currentNarrationVolume.toString();
 }
@@ -1485,9 +1567,14 @@ mediaPlayPauseBtn.addEventListener('click', () => {
         if(bgMusicPlayer.paused) bgMusicPlayer.play();
         else bgMusicPlayer.pause();
     } else {
-        // Fallback or prompt
-        openSoundGenDialog();
+        // Fallback: one click generate
+        generateContextualAmbience();
     }
+});
+
+narratorToggleBtn.addEventListener('click', () => {
+    isNarratorEnabled = !isNarratorEnabled;
+    updateMediaControls();
 });
 
 bgVolumeSlider.addEventListener('input', (e) => {
@@ -1505,7 +1592,8 @@ mediaSpeedSelect.addEventListener('change', () => {
     bgMusicPlayer.playbackRate = parseFloat(mediaSpeedSelect.value);
 });
 
-mediaGenerateBtn.addEventListener('click', openSoundGenDialog);
+mediaGenerateBtn.addEventListener('click', generateContextualAmbience);
+mediaMixerBtn.addEventListener('click', openSoundGenDialog);
 
 
 // --- EVENT LISTENERS ---
@@ -1566,11 +1654,12 @@ assetUploadInput.addEventListener('change', handleAssetUpload);
 // Form & Settings
 promptForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  const prompt = promptInput.value.trim();
-  if (prompt) {
-    generateContent(prompt);
-    promptInput.value = '';
+  let prompt = promptInput.value.trim();
+  if (!prompt) {
+      prompt = "Continue the story naturally."; // Default prompt logic
   }
+  generateContent(prompt);
+  promptInput.value = '';
 });
 
 saveButton.addEventListener('click', () => {
