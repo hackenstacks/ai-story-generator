@@ -28,27 +28,36 @@
 
     <!-- Floating Media Player Widget -->
     <div id="media-player-widget">
-        <div class="media-info">
-            <span class="icon">🎵</span>
-            <span id="media-status">Ambience</span>
-        </div>
-        <div class="media-controls">
-            <button id="media-play-pause" title="Play/Pause">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            </button>
-            <div class="volume-container" title="Volume">
-                 <input type="range" id="media-volume" min="0" max="1" step="0.1" value="0.5">
+        <div class="media-row header-row">
+             <div class="media-info">
+                <span class="icon">🎵</span>
+                <span id="media-status">Ambience</span>
             </div>
-            <select id="media-speed" title="Playback Speed">
+            <div class="media-main-controls">
+                <button id="media-play-pause" title="Play/Pause Background">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+                 <button id="media-generate" title="Generate AI Soundscape">
+                    <span class="magic-wand">✨</span>
+                </button>
+            </div>
+        </div>
+        <div class="media-row controls-row">
+            <div class="vol-group" title="Background Volume">
+                <span class="vol-icon">🎵</span>
+                <input type="range" id="bg-volume" min="0" max="1" step="0.05" value="0.5">
+            </div>
+            <div class="vol-group" title="Narration Volume">
+                <span class="vol-icon">🗣️</span>
+                <input type="range" id="narrator-volume" min="0" max="1" step="0.05" value="1.0">
+            </div>
+             <select id="media-speed" title="Playback Speed">
                 <option value="0.5">0.5x</option>
                 <option value="1.0" selected>1.0x</option>
                 <option value="1.25">1.2x</option>
                 <option value="1.5">1.5x</option>
                 <option value="2.0">2.0x</option>
             </select>
-            <button id="media-generate" title="Generate AI Soundscape">
-                <span class="magic-wand">✨</span>
-            </button>
         </div>
     </div>
 
@@ -108,8 +117,8 @@
       <div id="assets-list-container" class="lib-content">
           <div class="assets-actions">
               <label for="asset-upload" class="upload-btn">
-                  <span>+ Upload Asset</span>
-                  <input type="file" id="asset-upload" accept="image/*,audio/*" style="display: none;">
+                  <span>+ Upload Media</span>
+                  <input type="file" id="asset-upload" accept="image/*,audio/*,video/*" style="display: none;">
               </label>
           </div>
           <div id="assets-list">
@@ -143,6 +152,36 @@
         </button>
       </form>
     </footer>
+
+    <!-- Sound Generation Dialog -->
+    <dialog id="sound-gen-dialog">
+        <form method="dialog">
+            <div class="settings-header">
+                <h2>Generate AI Soundscape</h2>
+                <button type="button" id="close-sound-gen-btn" class="icon-btn">&times;</button>
+            </div>
+            <div class="dialog-content">
+                <p class="info-text">Select audio assets to mix/transform, and provide a prompt to guide the AI.</p>
+                
+                <div class="form-group">
+                    <label>Select Audio Sources (Optional)</label>
+                    <div id="audio-asset-selection-list">
+                        <!-- Checkboxes injected here -->
+                        <div class="empty-state">No audio assets in library. Upload some first!</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="sound-gen-prompt">Guidance Prompt</label>
+                    <textarea id="sound-gen-prompt" rows="3" placeholder="e.g. 'Mix these sounds into a spooky forest ambience with wind howling'"></textarea>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="cancel-sound-gen-btn">Cancel</button>
+                <button type="submit" id="confirm-sound-gen-btn">Generate Sound</button>
+            </div>
+        </form>
+    </dialog>
 
     <!-- Regenerate Modal -->
     <dialog id="regenerate-dialog">
@@ -354,10 +393,15 @@
         <p>You can also upload your own background music in Settings > Audio or the Assets Library.</p>
 
         <h3>Media Controls & AI Ambience</h3>
-        <p>Use the floating media player (top right) to control background audio volume and speed. Click the ✨ button to let Gemini generate a soundscape based on your current story scene.</p>
+        <p>Use the floating media player (top right) to control background audio volume and narration volume independently. Click the ✨ button to create a custom soundscape using your library assets.</p>
 
         <h3>Assets Library</h3>
-        <p>Open the Library sidebar and switch to the "Assets" tab. Here you can upload images and audio files. Click on an asset to immediately apply it to your current story.</p>
+        <p>Open the Library sidebar and switch to the "Assets" tab. Here you can upload images, audio, and video clips.</p>
+        <ul>
+            <li><strong>Audio:</strong> Click to play as background music.</li>
+            <li><strong>Image:</strong> Click to set as story border theme.</li>
+            <li><strong>Video:</strong> Click to insert into the story conversation.</li>
+        </ul>
 
         <h3>Regeneration</h3>
         <p>Don't like a response? Click the 🔄 button next to any message. You can enter a "Steering Prompt" to guide the AI (e.g., "Make it funnier") or just let it try again automatically.</p>

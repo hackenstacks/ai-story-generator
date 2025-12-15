@@ -54,6 +54,13 @@ const confirmRegenBtn = document.getElementById('confirm-regen-btn') as HTMLButt
 const cancelRegenBtn = document.getElementById('cancel-regen-btn') as HTMLButtonElement;
 const closeRegenBtn = document.getElementById('close-regen-btn') as HTMLButtonElement;
 
+// Sound Generation Dialog Elements
+const soundGenDialog = document.getElementById('sound-gen-dialog') as HTMLDialogElement;
+const closeSoundGenBtn = document.getElementById('close-sound-gen-btn') as HTMLButtonElement;
+const cancelSoundGenBtn = document.getElementById('cancel-sound-gen-btn') as HTMLButtonElement;
+const confirmSoundGenBtn = document.getElementById('confirm-sound-gen-btn') as HTMLButtonElement;
+const soundGenPromptInput = document.getElementById('sound-gen-prompt') as HTMLTextAreaElement;
+const audioAssetSelectionList = document.getElementById('audio-asset-selection-list') as HTMLElement;
 
 // Help Elements
 const helpButton = document.getElementById('help-button') as HTMLButtonElement;
@@ -91,7 +98,8 @@ const clearMusicBtn = document.getElementById('clear-music-btn') as HTMLButtonEl
 
 // Media Player Widget Elements
 const mediaPlayPauseBtn = document.getElementById('media-play-pause') as HTMLButtonElement;
-const mediaVolumeSlider = document.getElementById('media-volume') as HTMLInputElement;
+const bgVolumeSlider = document.getElementById('bg-volume') as HTMLInputElement;
+const narratorVolumeSlider = document.getElementById('narrator-volume') as HTMLInputElement;
 const mediaSpeedSelect = document.getElementById('media-speed') as HTMLSelectElement;
 const mediaGenerateBtn = document.getElementById('media-generate') as HTMLButtonElement;
 
@@ -99,8 +107,8 @@ const mediaGenerateBtn = document.getElementById('media-generate') as HTMLButton
 // --- TYPE DEFINITIONS ---
 type Turn = {
   id: string;
-  type: 'text' | 'image';
-  content: string; // For text, it's markdown. For image, it's base64 data URI.
+  type: 'text' | 'image' | 'video';
+  content: string; // For text, markdown. For media, base64 data URI.
 };
 
 interface Story {
@@ -116,9 +124,10 @@ interface Story {
 
 interface Asset {
     id: string;
-    type: 'image' | 'audio';
+    type: 'image' | 'audio' | 'video';
     name: string;
     data: string; // Base64
+    mimeType: string;
     createdAt: number;
 }
 
@@ -145,6 +154,8 @@ let library: Story[] = [];
 let assets: Asset[] = [];
 let currentStoryId: string | null = null;
 let audioContext: AudioContext | null = null;
+let narrationGainNode: GainNode | null = null;
+let currentNarrationVolume = 1.0;
 
 // Regenerate state
 let turnToRegenerate: Turn | null = null;
@@ -365,13 +376,20 @@ async function pcmToBase64Wav(pcmData: Uint8Array, sampleRate: number): Promise<
     return blobToBase64(blob);
 }
 
+function initAudioContext() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        narrationGainNode = audioContext.createGain();
+        narrationGainNode.gain.value = currentNarrationVolume;
+        narrationGainNode.connect(audioContext.destination);
+    }
+}
 
 // Use browser's decodeAudioData which supports many formats including mp3/wav if returned, 
 // OR handle raw PCM if specifically requested. Gemini 'audio/mp3' output is standard.
 async function playAudioBytes(base64Data: string) {
-    if (!audioContext) {
-        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
+    initAudioContext();
+    if (!audioContext || !narrationGainNode) return;
     
     // Resume context if suspended (browser autoplay policy)
     if (audioContext.state === 'suspended') {
@@ -379,13 +397,19 @@ async function playAudioBytes(base64Data: string) {
     }
 
     try {
-        const arrayBuffer = decode(base64Data).buffer;
+        const bytes = decode(base64Data);
+        const arrayBuffer = bytes.buffer;
+
+        // Clone the buffer because decodeAudioData detaches it
+        const bufferCopy = arrayBuffer.slice(0);
+
         // Try standard decode first
         try {
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
+            // Connect to Narration Gain Node
+            source.connect(narrationGainNode);
             source.start(0);
         } catch (decodeError) {
              // Fallback for raw PCM (assume 24kHz mono if standard decode fails)
@@ -393,7 +417,8 @@ async function playAudioBytes(base64Data: string) {
              console.warn("Standard decode failed, trying raw PCM assumption (24kHz Mono)", decodeError);
              
              // Very simple manual PCM decode assuming 16-bit little endian, 24kHz
-             const pcmData = new Int16Array(arrayBuffer);
+             // Use bufferCopy because arrayBuffer is detached
+             const pcmData = new Int16Array(bufferCopy);
              const audioBuffer = audioContext.createBuffer(1, pcmData.length, 24000);
              const channelData = audioBuffer.getChannelData(0);
              for(let i=0; i<pcmData.length; i++) {
@@ -401,7 +426,7 @@ async function playAudioBytes(base64Data: string) {
              }
              const source = audioContext.createBufferSource();
              source.buffer = audioBuffer;
-             source.connect(audioContext.destination);
+             source.connect(narrationGainNode);
              source.start(0);
         }
     } catch (e) {
@@ -566,13 +591,22 @@ async function handleAssetUpload(e: Event) {
     if (!file) return;
 
     const base64 = await blobToBase64(file);
-    const type = file.type.startsWith('image') ? 'image' : 'audio';
+    let type: 'image' | 'audio' | 'video';
+    
+    if (file.type.startsWith('image')) type = 'image';
+    else if (file.type.startsWith('audio')) type = 'audio';
+    else if (file.type.startsWith('video')) type = 'video';
+    else {
+        alert("Unsupported file type");
+        return;
+    }
     
     const newAsset: Asset = {
         id: generateId(),
         type: type,
         name: file.name,
         data: base64,
+        mimeType: file.type,
         createdAt: Date.now()
     };
 
@@ -598,13 +632,31 @@ async function applyAssetToStory(asset: Asset) {
     if (!story) return;
 
     if (asset.type === 'image') {
-        await updateCurrentStory(story.conversation, { themeImage: asset.data });
-        // Re-render to see changes
-        loadStory(story.id);
-    } else {
-        await updateCurrentStory(story.conversation, { bgMusic: asset.data });
-        bgMusicPlayer.src = asset.data;
-        bgMusicPlayer.play().then(updateMediaControls);
+        // For image, we set theme.
+        if (confirm("Set this image as the story border theme?")) {
+            await updateCurrentStory(story.conversation, { themeImage: asset.data });
+            loadStory(story.id);
+        }
+    } else if (asset.type === 'audio') {
+        // For audio, set BG music
+        if(confirm("Set this audio as the background music?")) {
+            await updateCurrentStory(story.conversation, { bgMusic: asset.data });
+            bgMusicPlayer.src = asset.data;
+            bgMusicPlayer.play().then(updateMediaControls);
+        }
+    } else if (asset.type === 'video') {
+        // For video, insert into conversation
+        if(confirm("Insert this video clip into the story?")) {
+             const videoTurn: Turn = {
+                id: Date.now().toString(),
+                type: 'video',
+                content: asset.data,
+            };
+            story.conversation.push(videoTurn);
+            await renderTurn(videoTurn, story.themeImage, story.fontFamily || currentSettings.manualFont);
+            await updateCurrentStory(story.conversation);
+            conversationContainer.scrollTop = conversationContainer.scrollHeight;
+        }
     }
 }
 
@@ -623,6 +675,12 @@ function renderAssetsList() {
             img.src = asset.data;
             img.className = 'asset-preview-img';
             item.appendChild(img);
+        } else if (asset.type === 'video') {
+            const vid = document.createElement('video');
+            vid.src = asset.data;
+            vid.className = 'asset-preview-video';
+            vid.muted = true;
+            item.appendChild(vid);
         } else {
             const icon = document.createElement('div');
             icon.className = 'asset-icon';
@@ -639,7 +697,10 @@ function renderAssetsList() {
         
         const typeLabel = document.createElement('div');
         typeLabel.className = 'asset-type';
-        typeLabel.textContent = asset.type === 'image' ? 'Image Border' : 'Audio Track';
+        let typeText = 'Audio';
+        if (asset.type === 'image') typeText = 'Image Border';
+        if (asset.type === 'video') typeText = 'Video Clip';
+        typeLabel.textContent = typeText;
         
         info.appendChild(name);
         info.appendChild(typeLabel);
@@ -811,11 +872,17 @@ async function renderTurn(turn: Turn, themeImage?: string, fontFamily?: string) 
         console.error('Markdown parse error:', e);
         contentElement.textContent = turn.content;
     }
-  } else {
+  } else if (turn.type === 'image') {
     contentElement.innerHTML = '';
     const img = new Image();
     img.src = turn.content;
     contentElement.appendChild(img);
+  } else if (turn.type === 'video') {
+    contentElement.innerHTML = '';
+    const vid = document.createElement('video');
+    vid.src = turn.content;
+    vid.controls = true;
+    contentElement.appendChild(vid);
   }
 
   if (isNew) {
@@ -845,7 +912,7 @@ function createTurnControls(turn: Turn, turnElement: HTMLElement): HTMLElement {
   const editButton = document.createElement('button');
   editButton.innerHTML = '&#9998;'; 
   editButton.title = 'Edit';
-  if (turn.type === 'image') {
+  if (turn.type !== 'text') {
     editButton.disabled = true;
   }
   editButton.onclick = () => {
@@ -1018,7 +1085,7 @@ async function performRegeneration(turn: Turn, element: HTMLElement, steeringPro
         // Restore old content
         if (turn.type === 'text') {
             contentDiv.innerHTML = await marked.parse(turn.content) as string;
-        } else {
+        } else if (turn.type === 'image') {
             contentDiv.innerHTML = '';
             const img = new Image();
             img.src = turn.content;
@@ -1078,38 +1145,59 @@ async function generateStoryThemeMetadata(prompt: string): Promise<{image?: stri
     }
 }
 
-// Generates background ambience audio using native audio model
-async function generateBackgroundAmbience() {
-    if (!currentStoryId) return;
-    const story = library.find(s => s.id === currentStoryId);
-    if (!story) return;
-
-    mediaGenerateBtn.classList.add('loading');
+// Generates background ambience using inputs if provided
+async function generateGuidedAmbience() {
+    // 1. Collect selected assets
+    const checkedBoxes = audioAssetSelectionList.querySelectorAll('input[type="checkbox"]:checked');
+    const selectedAssetIds = Array.from(checkedBoxes).map(cb => (cb as HTMLInputElement).value);
     
-    // Construct context from last few turns
-    const textTurns = story.conversation.filter(t => t.type === 'text');
-    let context = "A mysterious story.";
-    if (textTurns.length > 0) {
-        context = textTurns.slice(-3).map(t => t.content).join(' ');
-    }
-    // Limit context length
-    if (context.length > 500) context = context.substring(0, 500) + "...";
+    const selectedAssets = assets.filter(a => selectedAssetIds.includes(a.id) && a.type === 'audio');
+    
+    // 2. Collect prompt
+    const prompt = soundGenPromptInput.value.trim();
 
+    if (selectedAssets.length === 0 && !prompt) {
+        alert("Please select audio assets or provide a prompt.");
+        return;
+    }
+
+    // 3. Close dialog and start loading UI
+    soundGenDialog.close();
+    mediaGenerateBtn.classList.add('loading');
+
+    // 4. API Call
     try {
         const apiKey = currentSettings.chatApiKey || process.env.API_KEY;
         const ai = new GoogleGenAI({ apiKey });
 
-        // Switched to TTS model as native-audio is likely Live API only or not supported for generateContent in this context
+        const parts: any[] = [];
+        
+        // Add Audio Parts
+        for(const asset of selectedAssets) {
+             // asset.data is "data:audio/mp3;base64,....."
+             // Split to get just base64
+             const base64Data = asset.data.split(',')[1];
+             parts.push({
+                 inlineData: {
+                     mimeType: asset.mimeType || 'audio/mp3',
+                     data: base64Data
+                 }
+             });
+        }
+
+        // Add Text Prompt Part
+        let textInstruction = "Generate an immersive background soundscape/ambience.";
+        if (prompt) textInstruction += ` details: ${prompt}`;
+        if (selectedAssets.length > 0) textInstruction += ` Use the provided audio files as reference or mix them creatively based on the description.`;
+        
+        parts.push({ text: textInstruction });
+
+        // Use Native Audio model for inputting audio files
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: `Narrate the ambient atmosphere and sounds for this scene in a low, immersive voice: "${context}".`,
+            model: "gemini-2.5-flash-native-audio-preview-09-2025",
+            contents: [{ parts: parts }],
             config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName: 'Fenrir' },
-                    },
-                },
+                responseModalities: [Modality.AUDIO]
             }
         });
 
@@ -1117,28 +1205,52 @@ async function generateBackgroundAmbience() {
         if (audioPart && audioPart.inlineData) {
              const base64Raw = audioPart.inlineData.data;
              const rawBytes = decode(base64Raw);
-             
-             // Convert Raw PCM to WAV for <audio> playback compatibility
-             // Assuming 24kHz mono based on model defaults
              const wavBase64 = await pcmToBase64Wav(rawBytes, 24000);
              
              // Update story
-             story.bgMusic = wavBase64;
-             await updateCurrentStory(story.conversation, { bgMusic: wavBase64 });
-             
-             // Play
-             bgMusicPlayer.src = wavBase64;
-             bgMusicPlayer.play().then(updateMediaControls);
+             const story = library.find(s => s.id === currentStoryId);
+             if (story) {
+                story.bgMusic = wavBase64;
+                await updateCurrentStory(story.conversation, { bgMusic: wavBase64 });
+                bgMusicPlayer.src = wavBase64;
+                bgMusicPlayer.play().then(updateMediaControls);
+             }
         } else {
-            alert("Failed to generate audio.");
+            alert("No audio generated.");
         }
 
-    } catch (e) {
-        console.error("Ambience Generation Error:", e);
-        alert("Ambience generation failed. " + (e as Error).message);
+    } catch(e) {
+        console.error("Sound Gen Error", e);
+        alert("Failed to generate soundscape: " + (e as Error).message);
     } finally {
         mediaGenerateBtn.classList.remove('loading');
     }
+}
+
+// Wrapper to open the dialog
+function openSoundGenDialog() {
+    // Populate list
+    audioAssetSelectionList.innerHTML = '';
+    const audioAssets = assets.filter(a => a.type === 'audio');
+    
+    if (audioAssets.length === 0) {
+        audioAssetSelectionList.innerHTML = '<div class="empty-state">No audio assets in library. Upload some first!</div>';
+    } else {
+        audioAssets.forEach(asset => {
+            const row = document.createElement('label');
+            row.className = 'checkbox-item';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = asset.id;
+            row.appendChild(cb);
+            const span = document.createElement('span');
+            span.textContent = asset.name;
+            row.appendChild(span);
+            audioAssetSelectionList.appendChild(row);
+        });
+    }
+    
+    soundGenDialog.showModal();
 }
 
 
@@ -1360,7 +1472,8 @@ function updateMediaControls() {
     } else {
         mediaPlayPauseBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
     }
-    mediaVolumeSlider.value = bgMusicPlayer.volume.toString();
+    bgVolumeSlider.value = bgMusicPlayer.volume.toString();
+    narratorVolumeSlider.value = currentNarrationVolume.toString();
 }
 
 bgMusicPlayer.addEventListener('play', updateMediaControls);
@@ -1372,21 +1485,27 @@ mediaPlayPauseBtn.addEventListener('click', () => {
         if(bgMusicPlayer.paused) bgMusicPlayer.play();
         else bgMusicPlayer.pause();
     } else {
-        // No source, maybe prompt to generate?
-        mediaGenerateBtn.classList.add('pulse');
-        setTimeout(() => mediaGenerateBtn.classList.remove('pulse'), 1000);
+        // Fallback or prompt
+        openSoundGenDialog();
     }
 });
 
-mediaVolumeSlider.addEventListener('input', (e) => {
+bgVolumeSlider.addEventListener('input', (e) => {
     bgMusicPlayer.volume = parseFloat((e.target as HTMLInputElement).value);
+});
+
+narratorVolumeSlider.addEventListener('input', (e) => {
+    currentNarrationVolume = parseFloat((e.target as HTMLInputElement).value);
+    if (narrationGainNode) {
+        narrationGainNode.gain.value = currentNarrationVolume;
+    }
 });
 
 mediaSpeedSelect.addEventListener('change', () => {
     bgMusicPlayer.playbackRate = parseFloat(mediaSpeedSelect.value);
 });
 
-mediaGenerateBtn.addEventListener('click', generateBackgroundAmbience);
+mediaGenerateBtn.addEventListener('click', openSoundGenDialog);
 
 
 // --- EVENT LISTENERS ---
@@ -1583,6 +1702,11 @@ confirmRegenBtn.addEventListener('click', () => {
         performRegeneration(turnToRegenerate, turnElementToRegenerate, prompt);
     }
 });
+
+// Sound Gen Events
+closeSoundGenBtn.addEventListener('click', () => soundGenDialog.close());
+cancelSoundGenBtn.addEventListener('click', () => soundGenDialog.close());
+confirmSoundGenBtn.addEventListener('click', () => generateGuidedAmbience());
 
 
 // Initialization
