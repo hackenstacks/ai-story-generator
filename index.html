@@ -26,45 +26,107 @@
       <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
     </button>
 
-    <!-- Floating Media Player Widget -->
-    <div id="media-player-widget">
-        <div class="media-row header-row">
-             <div class="media-info">
-                <span class="icon">🎵</span>
-                <span id="media-status">Ambience</span>
-            </div>
-            <div class="media-main-controls">
-                <button id="narrator-toggle" title="Toggle Auto-Narration (TTS)">
-                    <span class="icon">🔇</span>
-                </button>
-                <button id="media-play-pause" title="Play/Pause Background">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                </button>
-                 <button id="media-generate" title="Auto-Generate Ambience from Story">
-                    <span class="magic-wand">✨</span>
-                </button>
-                <button id="media-mixer" title="Custom Sound Mixer">
-                    <span class="icon">🎛️</span>
-                </button>
+    <!-- Main Media Center (Slide Down) -->
+    <div id="main-media-center">
+        <div class="mmc-header">
+            <h3>Media Control Center</h3>
+            <div class="mmc-actions">
+                <button id="mmc-cancel-btn">Cancel</button>
+                <button id="mmc-ok-btn">OK</button>
             </div>
         </div>
-        <div class="media-row controls-row">
-            <div class="vol-group" title="Background Volume">
-                <span class="vol-icon">🎵</span>
-                <input type="range" id="bg-volume" min="0" max="1" step="0.05" value="0.5">
+        <div class="mmc-body">
+            <!-- Audio Controls -->
+            <div class="mmc-section">
+                <h4>Audio Playback</h4>
+                <div class="control-grid">
+                    <div class="control-item">
+                        <label>Ambience Volume</label>
+                        <input type="range" id="mmc-bg-volume" min="0" max="1" step="0.05">
+                    </div>
+                    <div class="control-item">
+                        <label>Narrator Volume</label>
+                        <input type="range" id="mmc-narrator-volume" min="0" max="1" step="0.05">
+                    </div>
+                    <div class="control-item">
+                        <label>Speed</label>
+                        <select id="mmc-speed">
+                            <option value="0.5">0.5x</option>
+                            <option value="1.0" selected>1.0x</option>
+                            <option value="1.25">1.2x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2.0">2.0x</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mmc-buttons">
+                    <button id="mmc-play-pause">Play/Pause Ambience</button>
+                    <button id="mmc-narrator-toggle">Enable Narration</button>
+                    <button id="mmc-stop-all" class="danger-btn">Stop All Audio</button>
+                </div>
             </div>
-            <div class="vol-group" title="Narration Volume">
-                <span class="vol-icon">🗣️</span>
-                <input type="range" id="narrator-volume" min="0" max="1" step="0.05" value="1.0">
+
+            <!-- Generation Tools -->
+            <div class="mmc-section">
+                <h4>AI Generation Tools</h4>
+                <div class="mmc-buttons">
+                    <button id="mmc-generate-ambience" title="Generate based on story context">
+                        <span class="magic-wand">✨</span> Auto Ambience
+                    </button>
+                    <button id="mmc-open-mixer" title="Select clips and mix">
+                        <span class="icon">🎛️</span> Sound Mixer
+                    </button>
+                </div>
             </div>
-             <select id="media-speed" title="Playback Speed">
-                <option value="0.5">0.5x</option>
-                <option value="1.0" selected>1.0x</option>
-                <option value="1.25">1.2x</option>
-                <option value="1.5">1.5x</option>
-                <option value="2.0">2.0x</option>
-            </select>
+
+            <!-- Configurations -->
+            <div class="mmc-section">
+                <h4>Media Configuration</h4>
+                <div class="control-grid">
+                    <div class="control-item">
+                        <label>Narrator Voice</label>
+                        <select id="mmc-tts-voice">
+                          <option value="Puck">Puck</option>
+                          <option value="Charon">Charon</option>
+                          <option value="Kore">Kore</option>
+                          <option value="Fenrir">Fenrir</option>
+                          <option value="Zephyr">Zephyr</option>
+                        </select>
+                    </div>
+                    <div class="control-item">
+                        <label>Image Aspect Ratio</label>
+                        <select id="mmc-image-ratio">
+                          <option value="1:1">1:1 (Square)</option>
+                          <option value="16:9">16:9 (Landscape)</option>
+                          <option value="9:16">9:16 (Portrait)</option>
+                        </select>
+                    </div>
+                    <div class="control-item">
+                        <label>Image Style</label>
+                        <select id="mmc-image-style">
+                          <option value="none">None</option>
+                          <option value="photorealistic">Photorealistic</option>
+                          <option value="anime">Anime</option>
+                          <option value="painterly">Painterly</option>
+                          <option value="cyberpunk">Cyberpunk</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <!-- Miniature Control Deck (Floating) -->
+    <div id="mini-control-deck">
+        <button id="mini-play-pause" title="Play/Pause Background">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button id="mini-narrator-toggle" title="Toggle Narrator">
+            <span class="icon">🔇</span>
+        </button>
+        <button id="mini-expand" title="Open Media Center">
+            <span class="icon">🎚️</span>
+        </button>
     </div>
 
     <!-- Main Navigation Menu (Vertical Sidebar) -->
@@ -144,6 +206,9 @@
 
     <footer>
       <form id="prompt-form">
+        <button type="button" id="footer-media-btn" title="Open Media Controls">
+            <span class="icon">🎚️</span>
+        </button>
         <input
           type="text"
           id="prompt-input"
@@ -159,7 +224,7 @@
       </form>
     </footer>
 
-    <!-- Sound Generation Dialog -->
+    <!-- Sound Generation Dialog (Mixer) -->
     <dialog id="sound-gen-dialog">
         <form method="dialog">
             <div class="settings-header">
@@ -172,8 +237,7 @@
                 <div class="form-group">
                     <label>Select Audio Sources (Optional)</label>
                     <div id="audio-asset-selection-list">
-                        <!-- Checkboxes injected here -->
-                        <div class="empty-state">No audio assets in library. Upload some first!</div>
+                        <div class="empty-state">No audio assets in library.</div>
                     </div>
                 </div>
 
@@ -197,7 +261,6 @@
                 <button type="button" id="close-regen-btn" class="icon-btn">&times;</button>
             </div>
             <div style="padding: 1.5rem;">
-                <p style="margin-bottom: 1rem; color: #ccc;">How would you like to change this part?</p>
                 <div class="form-group">
                     <label for="regen-prompt">Steering Prompt (Optional)</label>
                     <input type="text" id="regen-prompt" placeholder="e.g. 'Make it more dramatic', 'Use blue colors'..." />
@@ -211,18 +274,17 @@
         </form>
     </dialog>
 
-    <!-- Settings Modal -->
+    <!-- Settings Modal (Reduced content) -->
     <dialog id="settings-dialog">
       <form method="dialog" id="settings-form">
         <div class="settings-header">
-          <h2>Settings</h2>
+          <h2>Global Settings</h2>
           <button type="button" id="close-settings-btn" class="icon-btn">&times;</button>
         </div>
         
         <div class="tabs">
           <button type="button" class="tab-btn active" data-tab="chat-settings">Chat / Story</button>
-          <button type="button" class="tab-btn" data-tab="image-settings">Images</button>
-          <button type="button" class="tab-btn" data-tab="audio-settings">Audio & Theme</button>
+          <button type="button" class="tab-btn" data-tab="theme-settings">Theme</button>
         </div>
 
         <div class="tab-content active" id="chat-settings">
@@ -250,130 +312,27 @@
           </div>
           
           <div class="form-group">
-            <label for="chat-writing-style">Writing Style</label>
-            <select id="chat-writing-style">
-              <option value="standard">Standard (Default)</option>
-              <option value="descriptive">Descriptive & Detailed</option>
-              <option value="concise">Concise & Direct</option>
-              <option value="humorous">Humorous & Witty</option>
-              <option value="dark">Dark & Gritty</option>
-              <option value="poetic">Poetic & Lyrical</option>
-              <option value="simple">Simple (for kids)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="chat-output-length">Response Length (Per Turn)</label>
-            <select id="chat-output-length">
-              <option value="short">Short (~100 words)</option>
-              <option value="medium">Medium (~300 words)</option>
-              <option value="long">Long (~600 words)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
             <label for="chat-api-key">API Key <small>(Leave empty to use env default)</small></label>
             <input type="password" id="chat-api-key" placeholder="sk-..." />
           </div>
         </div>
 
-        <div class="tab-content" id="image-settings">
-          <p class="info-text">Configure image generation behavior.</p>
-           <div class="form-group">
-            <label for="image-provider">Provider</label>
-            <select id="image-provider">
-              <option value="google">Google GenAI</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="image-model-select">Model Preset</label>
-            <select id="image-model-select">
-              <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Standard)</option>
-              <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
-            </select>
-          </div>
-          
-          <div class="form-group">
-            <label for="image-count">Images per Generation</label>
-            <input type="number" id="image-count" min="0" max="4" value="1" />
-            <small>0 to disable automatic images. Max 4.</small>
-          </div>
-
-          <div class="form-group">
-            <label for="image-aspect-ratio">Aspect Ratio</label>
-            <select id="image-aspect-ratio">
-              <option value="1:1">1:1 (Square)</option>
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="9:16">9:16 (Portrait)</option>
-              <option value="4:3">4:3 (Standard)</option>
-              <option value="3:4">3:4 (Portrait Standard)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="image-style">Style Preset</label>
-            <select id="image-style">
-              <option value="none">None (Default)</option>
-              <option value="photorealistic">Photorealistic</option>
-              <option value="anime">Anime / Manga</option>
-              <option value="digital-art">Digital Art</option>
-              <option value="painterly">Painterly / Oil Painting</option>
-              <option value="watercolor">Watercolor</option>
-              <option value="cyberpunk">Cyberpunk / Neon</option>
-              <option value="sketch">Pencil Sketch</option>
-              <option value="3d-render">3D Render</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="image-negative-prompt">Negative Prompt <small>(What to avoid)</small></label>
-            <textarea id="image-negative-prompt" rows="2" placeholder="e.g. text, watermark, blurry, distorted hands"></textarea>
-          </div>
-
-           <div class="form-group">
-            <label for="image-api-key">API Key <small>(Leave empty to use Chat key)</small></label>
-            <input type="password" id="image-api-key" placeholder="sk-..." />
-          </div>
-        </div>
-        
-        <div class="tab-content" id="audio-settings">
-          <p class="info-text">Customize the story atmosphere and voice.</p>
-          
+        <div class="tab-content" id="theme-settings">
           <div class="form-group">
             <label for="story-font">Story Font</label>
             <select id="story-font">
                 <option value="">Auto-detected (Default)</option>
-                <option value="'Roboto', sans-serif">Roboto (Modern)</option>
-                <option value="'Merriweather', serif">Merriweather (Classic)</option>
-                <option value="'Courier Prime', monospace">Courier Prime (Typewriter)</option>
-                <option value="'Dancing Script', cursive">Dancing Script (Cursive)</option>
-                <option value="'Cinzel', serif">Cinzel (Fantasy/Epic)</option>
+                <option value="'Roboto', sans-serif">Roboto</option>
+                <option value="'Merriweather', serif">Merriweather</option>
+                <option value="'Courier Prime', monospace">Courier Prime</option>
+                <option value="'Dancing Script', cursive">Dancing Script</option>
+                <option value="'Cinzel', serif">Cinzel</option>
             </select>
           </div>
-
-          <div class="form-group">
-            <label for="tts-voice">Text-to-Speech Voice</label>
-            <select id="tts-voice">
-              <option value="Puck">Puck</option>
-              <option value="Charon">Charon</option>
-              <option value="Kore">Kore</option>
-              <option value="Fenrir">Fenrir</option>
-              <option value="Zephyr">Zephyr</option>
-            </select>
-          </div>
-
           <div class="form-group">
              <label>Custom Border Image</label>
              <input type="file" id="border-upload" accept="image/*" />
-             <small>Upload an image to use as the story border (bezel).</small>
-             <button type="button" id="clear-border-btn" style="margin-top:0.5rem; font-size: 0.8rem; padding: 0.4rem;">Reset to Auto</button>
-          </div>
-
-          <div class="form-group">
-             <label>Background Music</label>
-             <input type="file" id="music-upload" accept="audio/*" />
-             <small>Upload an audio file to loop in the background.</small>
-             <button type="button" id="clear-music-btn" style="margin-top:0.5rem; font-size: 0.8rem; padding: 0.4rem;">Stop/Clear Music</button>
+             <button type="button" id="clear-border-btn" style="margin-top:0.5rem; font-size: 0.8rem; padding: 0.4rem;">Reset</button>
           </div>
         </div>
 
@@ -391,24 +350,11 @@
         <button type="button" id="close-help-btn" class="icon-btn">&times;</button>
       </div>
       <div class="help-content">
-        <h3>Quick Start</h3>
-        <p>Type a prompt to begin. If you leave the prompt empty and click <strong>Generate</strong>, the AI will automatically write the next part of the story.</p>
-        
-        <h3>Audio & TTS</h3>
-        <p><strong>Narrator Mode:</strong> Click the speaker icon 🔇 in the top right media widget to toggle Auto-Narration. When enabled (🗣️), the AI will read new story parts aloud automatically.</p>
-        <p>You can adjust the Narrator Volume and Background Volume independently in the media widget.</p>
-
-        <h3>AI Ambience</h3>
-        <p><strong>Magic Wand (✨):</strong> Click this to instantly generate background sound/music compatible with the current story scene.</p>
-        <p><strong>Mixer (🎛️):</strong> Click this to open the custom sound mixer where you can select specific audio files from your library and guide the AI with a prompt.</p>
-
-        <h3>Assets Library</h3>
-        <p>Open the Library sidebar and switch to the "Assets" tab. Here you can upload images, audio, and video clips.</p>
-        <ul>
-            <li><strong>Audio:</strong> Click to play as background music.</li>
-            <li><strong>Image:</strong> Click to set as story border theme.</li>
-            <li><strong>Video:</strong> Click to insert into the story conversation.</li>
-        </ul>
+        <h3>Controls</h3>
+        <p><strong>Mini Deck (Top Right):</strong> Quick access to Play/Pause, Narrator toggle, and the Main Media Center.</p>
+        <p><strong>Media Center (Top Center):</strong> Accessed via the 🎚️ icon. Contains all audio volumes, image settings, and AI generation tools.</p>
+        <p><strong>Auto-Generate:</strong> Click "Generate" with an empty prompt to let the AI continue the story automatically.</p>
+        <p><strong>Narration:</strong> Enable the narrator (🗣️) to read new story parts aloud. The narrator waits for text to be fully generated.</p>
       </div>
       <div class="dialog-actions">
         <button type="button" id="close-help-action">Close</button>
