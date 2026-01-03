@@ -21,10 +21,28 @@
     <!-- Background Music Player -->
     <audio id="bg-music-player" loop hidden></audio>
 
-    <!-- Floating Menu Toggle -->
-    <button id="main-menu-toggle" class="icon-btn fixed-toggle" title="Open Menu">
-      <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-    </button>
+    <!-- Header / Top Bar -->
+    <header id="app-header">
+        <button id="main-menu-toggle" class="icon-btn" title="Open Project Menu">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <div id="mode-switcher">
+            <button class="mode-btn" data-mode="editor" title="Write Script">📝 Editor</button>
+            <button class="mode-btn active" data-mode="studio" title="Interactive Studio">🎨 Studio</button>
+            <button class="mode-btn" data-mode="player" title="Play Story">▶️ Play</button>
+        </div>
+        <div id="mini-control-deck">
+            <button id="mini-play-pause" title="Play/Pause Background">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button id="mini-narrator-toggle" title="Toggle Narrator">
+                <span class="icon">🔇</span>
+            </button>
+            <button id="mini-expand" title="Open Media Center">
+                <span class="icon">🎚️</span>
+            </button>
+        </div>
+    </header>
 
     <!-- Main Media Center (Slide Down) -->
     <div id="main-media-center">
@@ -76,6 +94,9 @@
                     <button id="mmc-open-mixer" title="Select clips and mix">
                         <span class="icon">🎛️</span> Sound Mixer
                     </button>
+                     <button id="mmc-generate-video" title="Generate Video using Veo (Paid Key Required)">
+                        <span class="icon">🎥</span> Generate Video (Veo)
+                    </button>
                 </div>
             </div>
 
@@ -99,6 +120,8 @@
                           <option value="1:1">1:1 (Square)</option>
                           <option value="16:9">16:9 (Landscape)</option>
                           <option value="9:16">9:16 (Portrait)</option>
+                          <option value="4:3">4:3 (Standard)</option>
+                          <option value="3:4">3:4 (Portrait Standard)</option>
                         </select>
                     </div>
                     <div class="control-item">
@@ -109,6 +132,11 @@
                           <option value="anime">Anime</option>
                           <option value="painterly">Painterly</option>
                           <option value="cyberpunk">Cyberpunk</option>
+                          <option value="8bit">8-Bit / Pixel Art</option>
+                          <option value="pixar">3D Animation (Pixar Style)</option>
+                          <option value="fantasy">High Fantasy</option>
+                          <option value="watercolor">Watercolor</option>
+                          <option value="noir">Film Noir</option>
                         </select>
                     </div>
                 </div>
@@ -116,42 +144,29 @@
         </div>
     </div>
 
-    <!-- Miniature Control Deck (Floating) -->
-    <div id="mini-control-deck">
-        <button id="mini-play-pause" title="Play/Pause Background">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button id="mini-narrator-toggle" title="Toggle Narrator">
-            <span class="icon">🔇</span>
-        </button>
-        <button id="mini-expand" title="Open Media Center">
-            <span class="icon">🎚️</span>
-        </button>
-    </div>
-
     <!-- Main Navigation Menu (Vertical Sidebar) -->
     <nav id="main-menu">
       <div class="nav-header">
-        <h2>Menu</h2>
+        <h2>Project Menu</h2>
         <button id="close-menu-btn" class="icon-btn">&times;</button>
       </div>
       
       <div class="nav-items">
         <button id="library-toggle-btn">
-             <span class="icon">📚</span> Library
+             <span class="icon">📂</span> Projects / Library
         </button>
         <div class="separator"></div>
         <button id="settings-button">
             <span class="icon">⚙️</span> Settings
         </button>
         <button id="save-button">
-            <span class="icon">💾</span> Save
+            <span class="icon">💾</span> Save Project
         </button>
         <button id="export-button">
-            <span class="icon">⬇️</span> Export
+            <span class="icon">📦</span> System Backup
         </button>
         <button id="import-button">
-            <span class="icon">⬆️</span> Import
+            <span class="icon">⬆️</span> Import System
         </button>
         <div class="separator"></div>
         <button id="help-button">
@@ -164,7 +179,7 @@
     <!-- Library Sidebar (Secondary Sidebar) -->
     <aside id="library-sidebar">
       <div class="sidebar-header">
-        <h2>Library</h2>
+        <h2>Project Space</h2>
         <button id="close-sidebar-btn" class="icon-btn">&times;</button>
       </div>
       
@@ -175,7 +190,7 @@
 
       <div id="story-list-container" class="lib-content active">
           <button id="new-story-btn">
-            <span>+ New Story</span>
+            <span>+ New Story Project</span>
           </button>
           <div id="story-list">
             <!-- Story items will be injected here -->
@@ -184,11 +199,16 @@
 
       <div id="assets-list-container" class="lib-content">
           <div class="assets-actions">
-              <label for="asset-upload" class="upload-btn">
-                  <span>+ Upload Media</span>
+              <label for="doc-upload" class="upload-btn secondary">
+                  <span>📄 Import Doc</span>
+                  <input type="file" id="doc-upload" accept=".txt,.md,.json" style="display: none;">
+              </label>
+              <label for="asset-upload" class="upload-btn primary">
+                  <span>📷 Import Media</span>
                   <input type="file" id="asset-upload" accept="image/*,audio/*,video/*" style="display: none;">
               </label>
           </div>
+          <p id="assets-filter-label" style="padding: 0 1rem; font-size: 0.8rem; color: #888; display:none;">Current Project Assets:</p>
           <div id="assets-list">
               <!-- Asset items will be injected here -->
           </div>
@@ -197,14 +217,51 @@
     
     <div id="sidebar-overlay"></div>
 
-    <main id="conversation-container">
+    <!-- MAIN APP VIEWS -->
+    
+    <!-- 1. STUDIO MODE (Conversational) -->
+    <main id="conversation-container" class="app-view active">
         <div id="welcome-message">
-            <h2>Story Weaver</h2>
-            <p>Start a new story. I will generate a unique border and pick a font for your story based on your first prompt.</p>
+            <h2>Story Weaver Studio</h2>
+            <p>Start a new story interactively or switch to <strong>Editor Mode</strong> to write a script.</p>
         </div>
     </main>
 
-    <footer>
+    <!-- 2. EDITOR MODE (Scripting) -->
+    <div id="script-editor-container" class="app-view">
+        <div class="editor-toolbar">
+            <span class="editor-info">Use tags: <code>[VIDEO: prompt]</code> <code>[IMAGE: prompt]</code></span>
+            <button id="compile-script-btn" class="tool-btn primary">
+                <span>⚙️ Compile to Story</span>
+            </button>
+        </div>
+        <textarea id="script-textarea" placeholder="Title: The Dragon's Keep
+
+[SCENE: A dark cave illuminated by glowing mushrooms.]
+
+The dragon Rubios slept soundly on a pile of gold...
+
+[IMAGE: A sleeping red dragon on gold piles, cinematic lighting]
+
+Suddenly, a knight entered...
+
+[VIDEO: A knight in shining armor drawing a sword, sparks flying]"></textarea>
+    </div>
+
+    <!-- 3. PLAYER MODE (Playback) -->
+    <div id="player-container" class="app-view">
+        <button id="exit-player-btn" class="icon-btn fixed-top-right">&times;</button>
+        <div id="player-stage">
+            <!-- Dynamic Content Here -->
+        </div>
+        <div class="player-controls">
+            <button id="player-prev">←</button>
+            <button id="player-next">→</button>
+        </div>
+    </div>
+
+    <!-- Footer (Only for Studio) -->
+    <footer id="studio-footer">
       <form id="prompt-form">
         <button type="button" id="footer-media-btn" title="Open Media Controls">
             <span class="icon">🎚️</span>
@@ -223,6 +280,27 @@
         </button>
       </form>
     </footer>
+
+    <!-- Asset Action Dialog -->
+    <dialog id="asset-action-dialog">
+        <form method="dialog">
+            <div class="settings-header">
+                <h2>Asset Options</h2>
+                <button type="button" id="close-aad-btn" class="icon-btn">&times;</button>
+            </div>
+            <div class="dialog-content" style="text-align: center; padding: 2rem;">
+                <div id="aad-preview-container" style="margin-bottom: 1.5rem;">
+                    <!-- Preview Image/Video injected here -->
+                </div>
+                <p id="aad-name" style="margin-bottom: 1.5rem; color: #bbb;"></p>
+                <div class="dialog-actions-vertical">
+                    <button type="button" id="aad-insert-btn" class="action-btn-lg">Insert into Story</button>
+                    <button type="button" id="aad-theme-btn" class="action-btn-lg">Set as Theme/Background</button>
+                    <button type="button" id="aad-delete-btn" class="action-btn-lg danger">Delete Asset</button>
+                </div>
+            </div>
+        </form>
+    </dialog>
 
     <!-- Sound Generation Dialog (Mixer) -->
     <dialog id="sound-gen-dialog">
@@ -253,6 +331,28 @@
         </form>
     </dialog>
 
+    <!-- Video Generation Dialog -->
+    <dialog id="video-gen-dialog">
+        <form method="dialog">
+            <div class="settings-header">
+                <h2>Generate Video (Veo)</h2>
+                <button type="button" id="close-video-gen-btn" class="icon-btn">&times;</button>
+            </div>
+            <div class="dialog-content">
+                <p class="info-text">Create a short video using Google Veo. <br><strong>Note:</strong> This requires a paid API key and takes a minute to generate.</p>
+                
+                <div class="form-group">
+                    <label for="video-gen-prompt">Video Prompt</label>
+                    <textarea id="video-gen-prompt" rows="3" placeholder="e.g. A cyberpunk city with neon rain falling in slow motion..."></textarea>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="cancel-video-gen-btn">Cancel</button>
+                <button type="submit" id="confirm-video-gen-btn">Generate Video</button>
+            </div>
+        </form>
+    </dialog>
+
     <!-- Regenerate Modal -->
     <dialog id="regenerate-dialog">
         <form method="dialog">
@@ -274,7 +374,7 @@
         </form>
     </dialog>
 
-    <!-- Settings Modal (Reduced content) -->
+    <!-- Settings Modal -->
     <dialog id="settings-dialog">
       <form method="dialog" id="settings-form">
         <div class="settings-header">
@@ -351,58 +451,23 @@
       </div>
       <div class="help-content">
         <h3>🧙‍♂️ Welcome to Story Weaver</h3>
-        <p>You have entered a <strong>military-grade</strong>, secure, offline-first storytelling interface. This tool combines the power of advanced LLMs with a rich multimedia environment to weave stories that come alive.</p>
+        <p>You have entered a <strong>military-grade</strong>, secure, offline-first storytelling interface.</p>
         
-        <h3>🚀 Getting Started</h3>
+        <h3>📝 Modes</h3>
         <ul>
-            <li><strong>Begin a Tale:</strong> Simply type a prompt in the bottom bar and hit <strong>Generate</strong> (or press Enter).</li>
-            <li><strong>Auto-Pilot:</strong> Leave the prompt <em>empty</em> and click Generate. The AI will read the context and continue the story automatically! 🤖</li>
-            <li><strong>Themes:</strong> The system automatically detects the mood of your story and generates a unique <strong>Border Frame</strong> and selects a matching <strong>Font</strong>. 🎨</li>
+            <li><strong>Editor:</strong> Write your story script manually. Use tags like <code>[VIDEO: prompt]</code> or <code>[IMAGE: prompt]</code> to auto-generate media when you click "Compile".</li>
+            <li><strong>Studio:</strong> The classic interactive chat interface where you build the story turn by turn.</li>
+            <li><strong>Player:</strong> A polished, read-only view to experience your final story.</li>
         </ul>
 
-        <h3>🎧 The Media Center (Slide Down)</h3>
-        <p>Access the Main Media Center by clicking the 🎚️ button next to the input bar or the expand button on the mini-deck.</p>
-        <ul>
-            <li><strong>🔊 Dual Volume:</strong> Control <em>Ambience</em> and <em>Narrator</em> volumes independently.</li>
-            <li><strong>🗣️ Narrator Mode:</strong> Toggle the <strong>Narrator</strong> (mute/speak icon). When enabled, the AI will read every new story segment aloud using high-quality neural voices. It waits for the text to finish generating before speaking to ensure a smooth experience.</li>
-            <li><strong>✨ Auto Ambience:</strong> Click the <strong>Magic Wand</strong> to instantly generate background music/sounds that match the current scene's mood.</li>
-            <li><strong>🎛️ Sound Mixer:</strong> Open the Mixer to select specific audio files from your library and give the AI a custom prompt to blend them into a new soundscape.</li>
-        </ul>
+        <h3>📜 Parchment Layout</h3>
+        <p>Experience stories in a split-view parchment template. Text flows on a scroll-like paper to the side, while images and videos take center stage.</p>
 
-        <h3>👋 Mini Control Deck</h3>
-        <p>A floating widget in the top right for quick access:</p>
-        <ul>
-            <li>⏯️ <strong>Play/Pause:</strong> Toggle background music.</li>
-            <li>🗣️/🔇 <strong>Narrator:</strong> Quickly enable or disable text-to-speech.</li>
-            <li>🎚️ <strong>Expand:</strong> Opens the full Media Center.</li>
-        </ul>
+        <h3>🎥 Video Generation (Veo)</h3>
+        <p>Use the <strong>Video</strong> button in the Media Center to generate short clips using Google Veo. You can also trigger this via script using the <code>[VIDEO: ...]</code> tag.</p>
 
-        <h3>📚 The Library & Assets</h3>
-        <p>Click <strong>📚 Library</strong> in the main menu to open the sidebar.</p>
-        <ul>
-            <li><strong>Stories Tab:</strong> Switch between different story sessions. Stories are saved automatically to your browser's local database. 💾</li>
-            <li><strong>Assets Tab:</strong> Upload your own media!
-                <ul>
-                    <li>🖼️ <strong>Images:</strong> Click an image to set it as the custom story border.</li>
-                    <li>🎵 <strong>Audio:</strong> Click audio to set it as background music or use it in the Mixer.</li>
-                    <li>🎥 <strong>Video:</strong> Click a video to insert it directly into the chat/story stream.</li>
-                </ul>
-            </li>
-        </ul>
-
-        <h3>⚙️ Advanced Settings</h3>
-        <ul>
-            <li><strong>Models:</strong> Choose between Gemini Flash (Fast/Free) or Pro (High Quality).</li>
-            <li><strong>Styles:</strong> Set "Writing Style" (e.g., Dark, Humorous) and "Image Style" (e.g., Cyberpunk, Watercolor).</li>
-            <li><strong>API Keys:</strong> Securely enter your own API keys. They are never stored on a server, only in your browser. 🔒</li>
-        </ul>
-
-        <h3>⌨️ Tips & Tricks</h3>
-        <ul>
-            <li><strong>Regenerate 🔄:</strong> Don't like a plot twist? Hover over the message and click the refresh icon. You can even give a "Steering Prompt" to guide the fix.</li>
-            <li><strong>Edit ✏️:</strong> You can edit any text bubble to correct the AI or change the narrative direction.</li>
-            <li><strong>Import/Export:</strong> Backup your entire library to a JSON file via the Menu.</li>
-        </ul>
+        <h3>📦 System Backup</h3>
+        <p>Use the <strong>System Backup</strong> button in the Menu to export a complete package of all your stories, assets, and settings.</p>
       </div>
       <div class="dialog-actions">
         <button type="button" id="close-help-action">Close</button>
