@@ -1,10 +1,11 @@
+
 /**
  * @license
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, Modality, GenerateContentResponse } from '@google/genai';
 import { marked } from 'marked';
 
 // --- DOM ELEMENT REFERENCES ---
@@ -68,6 +69,7 @@ const importFileInput = document.getElementById('import-file') as HTMLInputEleme
 const librarySidebar = document.getElementById('library-sidebar') as HTMLElement;
 const closeSidebarBtn = document.getElementById('close-sidebar-btn') as HTMLButtonElement;
 const newStoryBtn = document.getElementById('new-story-btn') as HTMLButtonElement;
+const importStoryBtn = document.getElementById('import-story-btn') as HTMLButtonElement;
 const storyList = document.getElementById('story-list') as HTMLElement;
 const assetsList = document.getElementById('assets-list') as HTMLElement;
 const assetsFilterLabel = document.getElementById('assets-filter-label') as HTMLElement;
@@ -127,12 +129,11 @@ const closeHelpActionBtn = document.getElementById('close-help-action') as HTMLB
 const chatProviderSelect = document.getElementById('chat-provider') as HTMLSelectElement;
 const chatModelSelect = document.getElementById('chat-model-select') as HTMLSelectElement;
 const chatCustomModelInput = document.getElementById('chat-custom-model') as HTMLInputElement;
-const chatApiKeyInput = document.getElementById('chat-api-key') as HTMLInputElement;
+// API keys are handled via process.env.API_KEY, removing user input references
 const chatModelGroup = document.getElementById('chat-model-group') as HTMLElement;
 const chatCustomModelGroup = document.getElementById('chat-custom-model-group') as HTMLElement;
 const imageProviderSelect = document.getElementById('image-provider') as HTMLSelectElement;
 const imageModelSelect = document.getElementById('image-model-select') as HTMLSelectElement;
-const imageApiKeyInput = document.getElementById('image-api-key') as HTMLInputElement;
 const imageCountInput = document.getElementById('image-count') as HTMLInputElement;
 const imageNegativePromptInput = document.getElementById('image-negative-prompt') as HTMLTextAreaElement;
 
@@ -174,12 +175,10 @@ interface Asset {
 interface AppSettings {
   chatProvider: 'google' | 'custom';
   chatModel: string;
-  chatApiKey: string;
   chatWritingStyle: string;
   chatOutputLength: string;
   imageProvider: 'google';
   imageModel: string;
-  imageApiKey: string;
   imageAspectRatio: string;
   imageStyle: string;
   imageNegativePrompt: string;
@@ -205,12 +204,10 @@ let selectedAssetForAction: Asset | null = null;
 const DEFAULT_SETTINGS: AppSettings = {
   chatProvider: 'google',
   chatModel: 'gemini-2.5-flash-image',
-  chatApiKey: '',
   chatWritingStyle: 'standard',
   chatOutputLength: 'medium',
   imageProvider: 'google',
   imageModel: 'gemini-2.5-flash-image',
-  imageApiKey: '',
   imageAspectRatio: '1:1',
   imageStyle: 'none',
   imageNegativePrompt: '',
@@ -342,6 +339,26 @@ function initAudioContext() {
     }
 }
 
+/** Helper to decode raw PCM data from Gemini API as per guidelines */
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
 async function playAudioBytes(base64Data: string) {
     initAudioContext();
     if (!audioContext || !narrationGainNode) return;
@@ -350,20 +367,9 @@ async function playAudioBytes(base64Data: string) {
 
     try {
         const bytes = decode(base64Data);
-        const arrayBuffer = bytes.buffer.slice(0); // clone for safety
-        const bufferCopy = bytes.buffer.slice(0); // backup for pcm fallback
-
-        try {
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            playBuffer(audioBuffer);
-        } catch (decodeError) {
-             console.warn("Standard decode failed, trying PCM", decodeError);
-             const pcmData = new Int16Array(bufferCopy);
-             const audioBuffer = audioContext.createBuffer(1, pcmData.length, 24000);
-             const channelData = audioBuffer.getChannelData(0);
-             for(let i=0; i<pcmData.length; i++) { channelData[i] = pcmData[i] / 32768.0; }
-             playBuffer(audioBuffer);
-        }
+        // Gemini raw PCM audio decoding as per guidelines
+        const audioBuffer = await decodeAudioData(bytes, audioContext, 24000, 1);
+        playBuffer(audioBuffer);
     } catch (e) { console.error("Error playing audio:", e); }
 }
 
@@ -380,7 +386,8 @@ function playBuffer(buffer: AudioBuffer) {
 async function speakText(text: string) {
     if (!text || !text.trim()) return;
     try {
-        const ai = new GoogleGenAI({ apiKey: currentSettings.chatApiKey || process.env.API_KEY });
+        // ALWAYS use process.env.API_KEY directly for initialization
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
             contents: [{ parts: [{ text: text }] }],
@@ -524,6 +531,7 @@ function renderAssetsList() {
             const icon = document.createElement('div'); icon.className = 'asset-icon'; icon.textContent = '🎵'; item.appendChild(icon);
         }
         
+        // FIX: Fixed error "Property 'div' does not exist on type 'Document'" on line 528
         const info = document.createElement('div'); info.className = 'asset-info';
         info.innerHTML = `<span class="asset-name">${asset.name}</span>`;
         const delBtn = document.createElement('button'); delBtn.className = 'delete-asset-btn'; delBtn.innerHTML = '&times;'; 
@@ -630,7 +638,8 @@ docUploadInput.addEventListener('change', (e) => {
         
         // Switch to Editor to show it
         if(currentMode !== 'editor') {
-            document.querySelector('.mode-btn[data-mode="editor"]')?.dispatchEvent(new Event('click'));
+            const editorBtn = document.querySelector('.mode-btn[data-mode="editor"]') as HTMLButtonElement;
+            if(editorBtn) editorBtn.click();
         }
     };
     reader.readAsText(file);
@@ -773,13 +782,9 @@ async function generateContent(prompt: string) {
     submitButton.disabled = true;
     submitButton.textContent = '...';
 
-    // Auto-theme if new
-    if (!story.themeImage && !story.fontFamily) {
-        // ... (Theme generation logic omitted for brevity, keeping core function)
-    }
-
     try {
-        const ai = new GoogleGenAI({ apiKey: currentSettings.chatApiKey || process.env.API_KEY });
+        // ALWAYS use process.env.API_KEY directly for initialization
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const config: any = { responseModalities: [Modality.TEXT] };
         if(currentSettings.imageGenerationCount > 0) config.responseModalities.push(Modality.IMAGE);
 
@@ -793,19 +798,23 @@ async function generateContent(prompt: string) {
         let currentTextTurn: Turn | null = null;
         
         for await (const chunk of responseStream) {
-            const parts = chunk.candidates?.[0]?.content?.parts || [];
-            for (const part of parts) {
-                if (part.text) {
-                    partialText += part.text;
-                    if (!currentTextTurn) {
-                        currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
-                        story.conversation.push(currentTextTurn);
-                        renderConversation(story);
-                    } else {
-                        currentTextTurn.content = partialText;
-                        renderConversation(story); // frequent render for typing effect
-                    }
+            const chunkResponse = chunk as GenerateContentResponse;
+            // FIX: Use chunk.text property to extract content as per guidelines
+            const textOutput = chunkResponse.text;
+            if (textOutput) {
+                partialText += textOutput;
+                if (!currentTextTurn) {
+                    currentTextTurn = { id: Date.now().toString(), type: 'text', content: '' };
+                    story.conversation.push(currentTextTurn);
+                    renderConversation(story);
+                } else {
+                    currentTextTurn.content = partialText;
+                    renderConversation(story); 
                 }
+            }
+            
+            const parts = chunkResponse.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
                 if (part.inlineData) {
                     if(currentTextTurn) { currentTextTurn = null; partialText = ''; }
                     const imgTurn: Turn = { id: Date.now().toString(), type: 'image', content: `data:image/png;base64,${part.inlineData.data}` };
@@ -862,7 +871,75 @@ function saveSettingsToStorage() {
     localStorage.setItem('story_weaver_settings', JSON.stringify(currentSettings));
 }
 
-// --- EVENT LISTENERS (CRITICAL FIX) ---
+// --- INTELLIGENT IMPORT LOGIC ---
+async function processImportData(json: any) {
+    let storiesToImport: Story[] = [];
+    let assetsToImport: Asset[] = [];
+    let mode = "Unknown";
+
+    // 1. Detect System Backup (Package)
+    if (json.stories && Array.isArray(json.stories)) {
+        storiesToImport = json.stories;
+        assetsToImport = json.assets || [];
+        mode = "System Backup";
+    } 
+    // 2. Detect Single Story Object
+    else if (json.id && json.conversation && Array.isArray(json.conversation)) {
+        storiesToImport = [json];
+        mode = "Single Story";
+    }
+    // 3. Detect Array of Stories
+    else if (Array.isArray(json) && json.length > 0 && json[0].conversation) {
+        storiesToImport = json;
+        mode = "Story Collection";
+    }
+
+    if (storiesToImport.length === 0) {
+        alert("Import failed: Could not recognize data format. Ensure the file is a valid Story Weaver export.");
+        return;
+    }
+
+    if (confirm(`Detected ${mode}. Import ${storiesToImport.length} stories and ${assetsToImport.length} assets?`)) {
+        let importedStoriesCount = 0;
+        let importedAssetsCount = 0;
+
+        for (const s of storiesToImport) {
+            // Check if exists
+            const existing = library.find(x => x.id === s.id);
+            if (!existing) {
+                await saveStoryToDB(s);
+                library.push(s);
+                importedStoriesCount++;
+            } else {
+                if (confirm(`Story "${s.title}" already exists. Overwrite?`)) {
+                    await saveStoryToDB(s);
+                    const idx = library.findIndex(x => x.id === s.id);
+                    library[idx] = s;
+                    importedStoriesCount++;
+                }
+            }
+        }
+
+        for (const a of assetsToImport) {
+            if (!assets.find(x => x.id === a.id)) {
+                await saveAssetToDB(a);
+                assets.push(a);
+                importedAssetsCount++;
+            }
+        }
+
+        alert(`Successfully imported ${importedStoriesCount} stories and ${importedAssetsCount} assets.`);
+        renderLibraryList();
+        renderAssetsList();
+        
+        // Load the first imported story if none selected
+        if (!currentStoryId && library.length > 0) {
+            loadStory(library[0].id);
+        }
+    }
+}
+
+// --- EVENT LISTENERS ---
 
 // 1. Menu Toggles
 mainMenuToggle.addEventListener('click', () => { mainMenu.classList.add('open'); sidebarOverlay.classList.add('open'); });
@@ -925,8 +1002,10 @@ exportButton.addEventListener('click', () => {
     URL.revokeObjectURL(url);
 });
 
-// 5. Import Button
+// 5. Intelligent Import Trigger
 importButton.addEventListener('click', () => importFileInput.click());
+importStoryBtn.addEventListener('click', () => importFileInput.click());
+
 importFileInput.addEventListener('change', (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if(!file) return;
@@ -934,19 +1013,13 @@ importFileInput.addEventListener('change', (e) => {
     reader.onload = async (ev) => {
         try {
             const json = JSON.parse(ev.target?.result as string);
-            if(json.stories) {
-                // System Backup
-                if(confirm("Merge backup into current library?")) {
-                    for(const s of json.stories) { if(!library.find(x=>x.id===s.id)) { await saveStoryToDB(s); library.push(s); } }
-                    if(json.assets) for(const a of json.assets) { if(!assets.find(x=>x.id===a.id)) { await saveAssetToDB(a); assets.push(a); } }
-                    alert("Imported successfully.");
-                    renderLibraryList();
-                    renderAssetsList();
-                }
-            }
-        } catch(err) { alert("Invalid backup file."); }
+            await processImportData(json);
+        } catch(err) { 
+            alert("Error: File is not a valid JSON or is corrupted."); 
+        }
     };
     reader.readAsText(file);
+    (e.target as HTMLInputElement).value = ''; // Reset input
 });
 
 // 6. Help Button
@@ -993,10 +1066,10 @@ confirmVideoGenBtn.addEventListener('click', async () => {
     const prompt = videoGenPromptInput.value;
     if(!prompt) return;
     
-    // Check Key - Using ANY cast to avoid TS error on missing window property
+    // API Key Selection logic as per Veo guidelines
     try {
         if(!(window as any).aistudio) {
-             if(!confirm("AI Studio check unavailable. Use API Key from Settings?")) return;
+             console.warn("AI Studio hasSelectedApiKey platform logic missing.");
         } else if (!await (window as any).aistudio.hasSelectedApiKey()) {
              await (window as any).aistudio.openSelectKey();
         }
@@ -1004,24 +1077,26 @@ confirmVideoGenBtn.addEventListener('click', async () => {
 
     submitButton.textContent = 'Generating Video...';
     try {
-        const ai = new GoogleGenAI({ apiKey: currentSettings.chatApiKey || process.env.API_KEY });
+        // MUST initiate GoogleGenAI right before making the call using process.env.API_KEY
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         let op = await ai.models.generateVideos({
             model: 'veo-3.1-fast-generate-preview',
             prompt: prompt,
             config: { numberOfVideos: 1, aspectRatio: '16:9', resolution: '720p' }
         });
         
-        // Polling
+        // Polling for LRO
         let attempts = 0;
-        while (!op.done && attempts < 30) {
-            await new Promise(r => setTimeout(r, 4000));
+        while (!op.done && attempts < 60) {
+            await new Promise(r => setTimeout(r, 10000));
             op = await ai.operations.getVideosOperation({operation: op});
             attempts++;
         }
         
         const uri = op.response?.generatedVideos?.[0]?.video?.uri;
         if (uri) {
-            const res = await fetch(`${uri}&key=${currentSettings.chatApiKey || process.env.API_KEY}`);
+            // Append process.env.API_KEY to fetch call
+            const res = await fetch(`${uri}&key=${process.env.API_KEY}`);
             const b64 = await blobToBase64(await res.blob());
             // Add to story
             if(!currentStoryId) await createNewStory();
@@ -1038,6 +1113,10 @@ confirmVideoGenBtn.addEventListener('click', async () => {
             alert("Video generation timed out or failed.");
         }
     } catch(e) {
+        // Guideline: handle "Requested entity was not found." for key selection
+        if ((e as Error).message.includes("Requested entity was not found.")) {
+             try { await (window as any).aistudio.openSelectKey(); } catch(err) { console.warn(err); }
+        }
         alert("Video Error: " + (e as Error).message);
     } finally {
         submitButton.textContent = 'Generate';
@@ -1049,12 +1128,12 @@ mmcOpenMixer.addEventListener('click', () => soundGenDialog.showModal());
 closeSoundGenBtn.addEventListener('click', () => soundGenDialog.close());
 cancelSoundGenBtn.addEventListener('click', () => soundGenDialog.close());
 
-// 11. Script Editor & Modes (Logic Added)
+// 11. Script Editor & Modes
 modeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const mode = btn.getAttribute('data-mode');
         if (mode === 'editor' || mode === 'studio' || mode === 'player') {
-            currentMode = mode;
+            currentMode = mode as any;
             modeBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
@@ -1062,13 +1141,11 @@ modeBtns.forEach(btn => {
                 scriptEditorContainer.style.display = 'flex';
                 playerContainer.style.display = 'none';
                 conversationContainer.style.display = 'none';
-                promptForm.style.display = 'none';
                 studioFooter.style.display = 'none';
             } else if (mode === 'player') {
                 scriptEditorContainer.style.display = 'none';
                 playerContainer.style.display = 'flex';
                 conversationContainer.style.display = 'none';
-                promptForm.style.display = 'none';
                 studioFooter.style.display = 'none';
                 // Basic Player Init
                  if(currentStoryId) {
@@ -1081,7 +1158,6 @@ modeBtns.forEach(btn => {
                 scriptEditorContainer.style.display = 'none';
                 playerContainer.style.display = 'none';
                 conversationContainer.style.display = 'block';
-                promptForm.style.display = 'flex';
                 studioFooter.style.display = 'flex';
                 if(currentStoryId) {
                     const story = library.find(s=>s.id===currentStoryId);
@@ -1098,6 +1174,9 @@ promptForm.addEventListener('submit', (e) => {
     promptInput.value = '';
 });
 
+// 12. New Story Button
+newStoryBtn.addEventListener('click', createNewStory);
+
 // INITIALIZATION
 loadSettings();
 initLibrary();
@@ -1110,7 +1189,6 @@ function closeLibrarySidebar() {
 
 function updateSettingsUI() {
     chatProviderSelect.value = currentSettings.chatProvider;
-    chatApiKeyInput.value = currentSettings.chatApiKey;
     storyFontSelect.value = currentSettings.manualFont;
     if(currentSettings.chatProvider==='google') {
         chatModelSelect.value = currentSettings.chatModel;
@@ -1125,7 +1203,6 @@ function updateSettingsUI() {
 function saveSettingsFromUI() {
     currentSettings.chatProvider = chatProviderSelect.value as any;
     currentSettings.chatModel = currentSettings.chatProvider==='google' ? chatModelSelect.value : chatCustomModelInput.value;
-    currentSettings.chatApiKey = chatApiKeyInput.value;
     currentSettings.manualFont = storyFontSelect.value;
     saveSettingsToStorage();
     settingsDialog.close();

@@ -403,6 +403,25 @@ h1 {
     padding: 1rem;
 }
 
+.story-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem;
+}
+
+.story-actions button {
+    flex: 1;
+    font-size: 0.85rem;
+    padding: 0.6rem;
+    border-radius: 8px;
+}
+
+.story-actions button.secondary {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--on-surface-color);
+}
+
 .upload-btn {
   flex: 1;
   background-color: rgba(255,255,255,0.05);
@@ -433,18 +452,7 @@ h1 {
 
 
 #new-story-btn {
-  margin: 1rem;
-  width: calc(100% - 2rem);
-  background-color: var(--primary-color);
-  color: var(--on-primary-color);
-  border-radius: 8px;
-  padding: 0.6rem;
-  text-align: center;
-  display: inline-block;
-  cursor: pointer;
-  border: none;
-  font-size: 1rem;
-  font-weight: 500;
+  /* background-color: var(--primary-color); */
 }
 
 #story-list, #assets-list {
